@@ -73,6 +73,10 @@ input,textarea,select{font-family:inherit}
 .brand-logo.footer-brand .brand-sub{font-size:10px}
 .brand-logo.hero-brand{font-size:clamp(52px,8vw,96px);margin-bottom:8px}
 .brand-logo.hero-brand .brand-sub{font-size:.17em}
+.footer-partner-logo{width:min(300px,100%);margin:10px 0 18px;display:block}
+.footer-partner-logo svg{width:100%;height:auto;display:block}
+.partner-buu{font-family:Arial Black,Impact,'DM Sans',sans-serif;font-weight:900;letter-spacing:-3px}
+.partner-caption{font-family:'DM Sans',Arial,sans-serif;font-weight:900;letter-spacing:.04em}
 
 /* Breadcrumb */
 .breadcrumb{background:#fff;border-bottom:1px solid var(--border);padding:10px 0}
@@ -702,6 +706,25 @@ function BrandLogo({ className = "" }) {
       </span>
       <span className="brand-sub">Planet C</span>
       <span className="brand-line" />
+    </span>
+  );
+}
+
+function BUUPHLogo() {
+  return (
+    <span className="footer-partner-logo" aria-label="Burapha University Faculty of Public Health">
+      <svg viewBox="0 0 720 230" role="img">
+        <title>Burapha University Faculty of Public Health</title>
+        <text x="0" y="98" className="partner-buu" fontSize="90" fill="#FFCC00">BU</text>
+        <text x="164" y="98" className="partner-buu" fontSize="90" fill="#8D8D8D">U</text>
+        <line x1="262" y1="24" x2="262" y2="146" stroke="#8D8D8D" strokeWidth="4" strokeLinecap="round" />
+        <text x="300" y="98" className="partner-buu" fontSize="90" fill="#EF6A79">PH</text>
+        <rect x="0" y="116" width="128" height="14" fill="#FFCC00" />
+        <text x="0" y="158" className="partner-caption" fontSize="22" fill="rgba(255,255,255,.72)">BURAPHA UNIVERSITY</text>
+        <text x="300" y="158" className="partner-caption" fontSize="22" fill="rgba(255,255,255,.72)">Faculty of Public Health</text>
+        <text x="300" y="206" className="partner-caption" fontSize="30" fill="#EF6A79">คณะสาธารณสุขศาสตร์</text>
+        <text x="0" y="198" className="partner-caption" fontSize="18" fill="rgba(255,255,255,.48)">WISDOM OF THE EAST</text>
+      </svg>
     </span>
   );
 }
@@ -3280,6 +3303,7 @@ function Footer({ t, lang, nav, footer }) {
           <div className="footer-grid">
             <div>
               <BrandLogo className="footer-brand" />
+              <BUUPHLogo />
               <p className="footer-desc">{L(footer.description_th, footer.description_en)}</p>
               <div className="footer-social">
                 {(footer.socials || []).map((s, i) => (
