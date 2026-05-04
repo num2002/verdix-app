@@ -34,3 +34,5 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
 Do not commit `.env`; keep production secrets on the server.
+
+CMS writes are protected by Supabase Auth. Public users can read content, while CMS updates require a user whose `app_metadata.role` is `admin`.

@@ -21,6 +21,12 @@ function writeLocal(key, value) {
   window.localStorage.setItem(key, JSON.stringify(value));
 }
 
+async function hasAuthSession() {
+  if (!isSupabaseConfigured) return false;
+  const { data } = await supabase.auth.getSession();
+  return Boolean(data.session);
+}
+
 async function list(table, fallback) {
   if (!isSupabaseConfigured) return readLocal(keys[table], fallback);
 
@@ -37,6 +43,7 @@ async function replaceAll(table, rows) {
   writeLocal(keys[table], rows);
 
   if (!isSupabaseConfigured) return rows;
+  if (!(await hasAuthSession())) return rows;
 
   const { error: deleteError } = await supabase.from(table).delete().neq("id", -1);
   if (deleteError) {
@@ -73,6 +80,7 @@ async function saveFooter(footer) {
   writeLocal(keys.footer, footer);
 
   if (!isSupabaseConfigured) return footer;
+  if (!(await hasAuthSession())) return footer;
 
   const { error } = await supabase
     .from("footer_settings")

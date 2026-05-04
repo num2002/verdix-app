@@ -64,16 +64,53 @@ alter table public.slides enable row level security;
 alter table public.menus enable row level security;
 alter table public.footer_settings enable row level security;
 
+drop policy if exists "Public read articles" on public.articles;
+drop policy if exists "Public read experts" on public.experts;
+drop policy if exists "Public read slides" on public.slides;
+drop policy if exists "Public read menus" on public.menus;
+drop policy if exists "Public read footer" on public.footer_settings;
+
+drop policy if exists "Development write articles" on public.articles;
+drop policy if exists "Development write experts" on public.experts;
+drop policy if exists "Development write slides" on public.slides;
+drop policy if exists "Development write menus" on public.menus;
+drop policy if exists "Development write footer" on public.footer_settings;
+
+drop policy if exists "Authenticated write articles" on public.articles;
+drop policy if exists "Authenticated write experts" on public.experts;
+drop policy if exists "Authenticated write slides" on public.slides;
+drop policy if exists "Authenticated write menus" on public.menus;
+drop policy if exists "Authenticated write footer" on public.footer_settings;
+drop policy if exists "Admin write articles" on public.articles;
+drop policy if exists "Admin write experts" on public.experts;
+drop policy if exists "Admin write slides" on public.slides;
+drop policy if exists "Admin write menus" on public.menus;
+drop policy if exists "Admin write footer" on public.footer_settings;
+
 create policy "Public read articles" on public.articles for select using (true);
 create policy "Public read experts" on public.experts for select using (true);
 create policy "Public read slides" on public.slides for select using (true);
 create policy "Public read menus" on public.menus for select using (true);
 create policy "Public read footer" on public.footer_settings for select using (true);
 
--- Development policy: allows the current frontend anon key to write.
--- Replace this with authenticated admin-only policies before production.
-create policy "Development write articles" on public.articles for all using (true) with check (true);
-create policy "Development write experts" on public.experts for all using (true) with check (true);
-create policy "Development write slides" on public.slides for all using (true) with check (true);
-create policy "Development write menus" on public.menus for all using (true) with check (true);
-create policy "Development write footer" on public.footer_settings for all using (true) with check (true);
+-- Production write policy: public users can read, but only Supabase Auth
+-- users with app_metadata.role = 'admin' can create, update, or delete CMS content.
+create policy "Admin write articles" on public.articles
+  for all using (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin')
+  with check (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin');
+
+create policy "Admin write experts" on public.experts
+  for all using (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin')
+  with check (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin');
+
+create policy "Admin write slides" on public.slides
+  for all using (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin')
+  with check (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin');
+
+create policy "Admin write menus" on public.menus
+  for all using (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin')
+  with check (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin');
+
+create policy "Admin write footer" on public.footer_settings
+  for all using (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin')
+  with check (auth.jwt() -> 'app_metadata' ->> 'role' = 'admin');

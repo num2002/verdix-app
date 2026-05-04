@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getUserRole, isAdminUser, isSupabaseConfigured, supabase } from "./lib/supabase";
 import { cmsService } from "./services/cmsService";
 
 const CSS = `
@@ -187,6 +188,8 @@ input,textarea,select{font-family:inherit}
 .form-inp:focus{outline:none;border-color:var(--ga);box-shadow:0 0 0 4px rgba(82,183,136,.12)}
 .auth-card .btn.btn-dark{padding:11px 16px!important;font-size:15px!important}
 .admin-hint{margin-top:14px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:8px;padding:9px 11px;font-size:12px;color:#166534}
+.auth-message{margin-top:12px;padding:10px 12px;border-radius:8px;background:#F0FDF4;color:#166534;font-size:12px;line-height:1.5}
+.auth-message.error{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
 .form-hint{margin-top:15px;text-align:center;color:var(--muted);font-size:13px}
 .form-hint button{border:none;background:none;color:var(--g2);font-size:14px;font-weight:800;padding:0}
 
@@ -314,7 +317,7 @@ const T = {
     login:"เข้าสู่ระบบ",register:"สมัครสมาชิก",dashboard:"แผงควบคุม",logout:"ออกจากระบบ",
     email:"อีเมล",password:"รหัสผ่าน",fullname:"ชื่อ-นามสกุล",org:"องค์กร",
     no_account:"ยังไม่มีบัญชี?",has_account:"มีบัญชีแล้ว?",
-    adm_hint:"ทดสอบ Admin: admin@verdix.com / admin",
+    adm_hint:"ใช้บัญชี Supabase Auth ที่ตั้งค่า role เป็น admin",
     adm_dash:"ภาพรวม",adm_posts:"จัดการบทความ",adm_exp:"จัดการผู้เชี่ยวชาญ",adm_users:"ผู้ใช้งาน",
     add_post:"+ เพิ่มบทความ",add_exp:"+ เพิ่มผู้เชี่ยวชาญ",
     edit:"แก้ไข",del:"ลบ",save:"บันทึก",cancel:"ยกเลิก",
@@ -357,7 +360,7 @@ const T = {
     login:"Login",register:"Register",dashboard:"Dashboard",logout:"Logout",
     email:"Email",password:"Password",fullname:"Full Name",org:"Organization",
     no_account:"Don't have an account?",has_account:"Already have an account?",
-    adm_hint:"Try Admin: admin@verdix.com / admin",
+    adm_hint:"Use a Supabase Auth account with the admin role",
     adm_dash:"Overview",adm_posts:"Manage Posts",adm_exp:"Manage Experts",adm_users:"Users",
     add_post:"+ Add Post",add_exp:"+ Add Expert",
     edit:"Edit",del:"Delete",save:"Save",cancel:"Cancel",
@@ -617,6 +620,15 @@ function Navbar({ t, lang, setLang, page, nav, user, logout, menus }) {
   const topMenus = activeMenus.filter(m => !m.parent_id).sort((a,b) => (a.order || 0) - (b.order || 0));
   const childrenOf = (id) => activeMenus.filter(m => String(m.parent_id) === String(id)).sort((a,b) => (a.order || 0) - (b.order || 0));
   const labelOf = (m) => lang === "th" ? (m.label_th || m.label_en) : (m.label_en || m.label_th);
+  const goTopMenu = (menuPage) => {
+    if (menuPage === "eco-factory") {
+      window.location.href = "https://app.verdixgreen.com";
+      return;
+    }
+
+    nav(menuPage || "home");
+  };
+
   return (
     <nav className="nav">
       <div className="nav-inner">
@@ -624,12 +636,13 @@ function Navbar({ t, lang, setLang, page, nav, user, logout, menus }) {
           <BrandLogo className="nav-brand" />
         </div>
         <div className="nav-links">
+          <button className={`nav-btn always ${page==="home"?"active":""}`} onClick={() => nav("home")}>{t.home}</button>
           {topMenus.map(m => {
             const subs = childrenOf(m.id);
             const isActive = page === m.page || subs.some(s => s.page === page);
             return (
               <div className="nav-item" key={m.id}>
-                <button className={`nav-btn always ${m.page==="amata-awards"?"nav-awards":""} ${isActive?"active":""}`} onClick={() => nav(m.page || "home")}>
+                <button className={`nav-btn always ${m.page==="amata-awards"?"nav-awards":""} ${isActive?"active":""}`} onClick={() => goTopMenu(m.page)}>
                   {labelOf(m)} {subs.length > 0 && <span className="nav-caret">▾</span>}
                 </button>
                 {subs.length > 0 && (
@@ -766,7 +779,7 @@ function HeroSlideshow({ lang, nav, slides }) {
           {L(slide.title_th, slide.title_en).toLowerCase() === "buuxc"
             ? <BrandLogo className="hero-brand" />
             : <h1 className="hero-title">{L(slide.title_th, slide.title_en)}</h1>}
-          <div className="hero-kicker">"{L(slide.kicker_th, slide.kicker_en)}"</div>
+          <div className="hero-kicker">&quot;{L(slide.kicker_th, slide.kicker_en)}&quot;</div>
           <p className="hero-sub">{L(slide.subtitle_th, slide.subtitle_en)}</p>
           <div className="hero-ctas">
             <button className="btn btn-dark" style={{fontSize:16,padding:"13px 30px"}} onClick={() => nav(slide.primary_page || "register")}>{L(slide.primary_th, slide.primary_en)}</button>
@@ -958,7 +971,7 @@ function HomePage({ t, lang, nav, articles, slides }) {
                   lang==="th"?"AI-driven Anomaly Detection & Alerts":"AI-driven Anomaly Detection & Alerts",
                 ]
               },
-            ].map((p,i) => (
+            ].map((p) => (
               <div key={p.phase} style={{position:"relative",zIndex:1,padding:"0 16px"}}>
                 {/* Phase dot */}
                 <div style={{display:"flex",justifyContent:"center",marginBottom:20}}>
@@ -1041,7 +1054,7 @@ function HomePage({ t, lang, nav, articles, slides }) {
               {avatar:"👩‍🏫",name:"รศ.ดร. พิมพ์ใจ ชาญชัย",org_th:"อาจารย์วิศวกรรมสิ่งแวดล้อม — มหาวิทยาลัยเทคโนโลยี",org_en:"Environmental Engineering Lecturer — Technology University",text_th:"แนะนำ VERDIX ให้นักศึกษาใช้ฝึกประเมิน Carbon Footprint เครื่องมือใช้ง่าย เนื้อหาตรงมาตรฐาน TGO/ISO ครบถ้วน",text_en:"Recommend VERDIX for students to practice Carbon Footprint assessment. Easy to use, content fully aligned with TGO/ISO standards.",stars:5},
             ].map((t,i)=>(
               <div key={i} className="testi-card">
-                <div className="testi-quote">"</div>
+                <div className="testi-quote">&quot;</div>
                 <div className="testi-stars">{[1,2,3,4,5].map(s=><span key={s} style={{color:"#FBBF24",fontSize:14}}>★</span>)}</div>
                 <p className="testi-text">{lang==="th"?t.text_th:t.text_en}</p>
                 <div className="testi-author">
@@ -1120,7 +1133,7 @@ function BlogPage({ t, lang, nav, articles }) {
 }
 
 // ─── Blog Detail ──────────────────────────────────────────────
-function BlogDetail({ t, lang, article, nav }) {
+function BlogDetail({ lang, article, nav }) {
   if (!article) return null;
   const body = lang==="th"
     ? `บทความนี้ครอบคลุมประเด็นสำคัญด้าน "${article.title_th}" ในบริบทของประเทศไทย\n\nในปัจจุบัน การเปลี่ยนแปลงสภาพภูมิอากาศกลายเป็นความท้าทายระดับโลกที่ทุกองค์กรต้องให้ความสำคัญ ไม่ว่าจะเป็นการลด GHG Emission การรายงาน ESG หรือการเตรียมความพร้อมรับกฎหมาย Climate Change Act ที่กำลังจะประกาศใช้\n\nVerdiX เชื่อมองค์กรกับผู้เชี่ยวชาญที่มีความสามารถและประสบการณ์ตรง ผ่านระบบ Digital Assessment ที่ครอบคลุม Eco-Factory, Green Industry, CFO/CFP และ Net Zero Roadmap\n\nการประเมินผ่านระบบ VerdiX ช่วยให้องค์กรเห็นภาพชัดเจนของสถานะปัจจุบัน ช่องว่างที่ต้องพัฒนา และเส้นทางที่เป็นไปได้สู่ความยั่งยืนในระยะยาว\n\nเริ่มต้นได้วันนี้กับผู้เชี่ยวชาญของเรากว่า 120 คนทั่วประเทศไทย`
@@ -1197,9 +1210,10 @@ function ExpertsPage({ t, lang, experts }) {
 }
 
 // ─── Login ────────────────────────────────────────────────────
-function LoginPage({ t, nav, doLogin }) {
+function LoginPage({ t, nav, doLogin, authBusy, authMessage }) {
   const [email,setEmail] = useState("");
   const [pass,setPass] = useState("");
+  const submit = () => doLogin(email, pass);
   return (
     <div className="auth-page">
       <div className="auth-hero">
@@ -1223,9 +1237,10 @@ function LoginPage({ t, nav, doLogin }) {
           </div>
           <div className="form-grp">
             <label className="form-lbl">{t.password}</label>
-            <input className="form-inp" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&doLogin(email,pass)} />
+            <input className="form-inp" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&submit()} />
           </div>
-          <button className="btn btn-dark" style={{width:"100%",padding:13,fontSize:16}} onClick={() => doLogin(email,pass)}>{t.login}</button>
+          <button className="btn btn-dark" style={{width:"100%",padding:13,fontSize:16}} onClick={submit} disabled={authBusy}>{authBusy ? "Loading..." : t.login}</button>
+          {authMessage && <div className={`auth-message ${authMessage.type === "error" ? "error" : ""}`}>{authMessage.text}</div>}
           <div className="admin-hint">💡 {t.adm_hint}</div>
           <p className="form-hint">{t.no_account} <button onClick={() => nav("register")}>{t.register}</button></p>
         </div>
@@ -1235,9 +1250,10 @@ function LoginPage({ t, nav, doLogin }) {
 }
 
 // ─── Register ─────────────────────────────────────────────────
-function RegisterPage({ t, nav, doLogin }) {
+function RegisterPage({ t, nav, doRegister, authBusy, authMessage }) {
   const [f,setF] = useState({name:"",email:"",org:"",pass:""});
   const set = (k,v) => setF(p=>({...p,[k]:v}));
+  const submit = () => doRegister(f);
   return (
     <div className="auth-page">
       <div className="auth-hero">
@@ -1261,7 +1277,8 @@ function RegisterPage({ t, nav, doLogin }) {
               <input className="form-inp" type={type} value={f[k]} onChange={e=>set(k,e.target.value)} placeholder={ph} />
             </div>
           ))}
-          <button className="btn btn-dark" style={{width:"100%",padding:13,fontSize:16}} onClick={() => doLogin(f.email,f.pass)}>{t.register}</button>
+          <button className="btn btn-dark" style={{width:"100%",padding:13,fontSize:16}} onClick={submit} disabled={authBusy}>{authBusy ? "Loading..." : t.register}</button>
+          {authMessage && <div className={`auth-message ${authMessage.type === "error" ? "error" : ""}`}>{authMessage.text}</div>}
           <p className="form-hint">{t.has_account} <button onClick={() => nav("login")}>{t.login}</button></p>
           </div>
       </div>
@@ -1984,7 +2001,7 @@ function CarbonPage({ lang, nav }) {
                   {name:"Cradle to Grave",th:"ตั้งแต่วัตถุดิบถึงทิ้งหลังใช้งาน",ico:"🌿→🗑️",use_th:"ใช้สำหรับ Carbon Label บนสินค้า"},
                   {name:"Cradle to Cradle",th:"วัฏจักรชีวิตแบบ Circular Economy",ico:"🌿→♻️",use_th:"ใช้สำหรับผลิตภัณฑ์ที่มี Recycling"},
                   {name:"Gate to Gate",th:"เฉพาะกระบวนการผลิตในโรงงาน",ico:"🏭→🏭",use_th:"ใช้สำหรับประเมินภายในโรงงาน"},
-                ].map((b,i)=>(
+                ].map((b)=>(
                   <div key={b.name} style={{display:"flex",gap:12,padding:"12px 0",borderBottom:"1px solid var(--border)"}}>
                     <span style={{fontSize:16,minWidth:60,textAlign:"center"}}>{b.ico}</span>
                     <div>
@@ -2025,7 +2042,7 @@ function CarbonPage({ lang, nav }) {
                     {y:"2030–2040",th:"ขยายสู่ Scope 3 / Green Supply Chain",en:"Expand to Scope 3 / Green Supply Chain"},
                     {y:"2040–2050",th:"Carbon Neutral — ชดเชยที่เหลือด้วย Credit",en:"Carbon Neutral — offset remaining with Credits"},
                     {y:"2050",th:"Net Zero — ตามเป้าหมายประเทศไทย",en:"Net Zero — aligned with Thailand 2050 target"},
-                  ].map((r,i)=>(
+                  ].map((r)=>(
                     <div key={r.y} style={{display:"flex",gap:14,padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
                       <div style={{fontSize:12,fontWeight:700,color:"var(--ga)",minWidth:90,paddingTop:2}}>{r.y}</div>
                       <div style={{fontSize:13,color:"var(--text)"}}>{L(r.th,r.en)}</div>
@@ -3357,6 +3374,16 @@ export default function App() {
   const [menus,setMenus] = useState(INIT_MENUS);
   const [cmsReady,setCmsReady] = useState(false);
   const [selArt,setSelArt] = useState(null);
+  const [authBusy,setAuthBusy] = useState(false);
+  const [authMessage,setAuthMessage] = useState(null);
+
+  const mapAuthUser = (authUser) => authUser
+    ? {
+        name: authUser.user_metadata?.full_name || authUser.email,
+        email: authUser.email,
+        role: getUserRole(authUser)
+      }
+    : null;
 
   useEffect(() => {
     let active = true;
@@ -3384,6 +3411,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) return undefined;
+
+    let active = true;
+
+    async function loadSession() {
+      const { data } = await supabase.auth.getSession();
+      if (active) setUser(mapAuthUser(data.session?.user));
+    }
+
+    loadSession();
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(mapAuthUser(session?.user));
+    });
+
+    return () => {
+      active = false;
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     if (cmsReady) cmsService.replaceAll("articles", articles);
   }, [articles, cmsReady]);
 
@@ -3408,17 +3456,68 @@ export default function App() {
     if (p==="blog-detail") setSelArt(data);
   };
 
-  const doLogin = (email,pass) => {
-    if (email==="admin@verdix.com" && pass==="admin") {
-      setUser({name:"Admin VerdiX",email,role:"admin"});
-      setPage("admin");
-    } else if (email && pass) {
-      setUser({name:"User Demo",email,role:"user"});
-      setPage("home");
+  const doLogin = async (email,pass) => {
+    setAuthMessage(null);
+
+    if (!isSupabaseConfigured) {
+      setAuthMessage({ type: "error", text: "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY first." });
+      return;
     }
+
+    setAuthBusy(true);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    setAuthBusy(false);
+
+    if (error) {
+      setAuthMessage({ type: "error", text: error.message });
+      return;
+    }
+
+    const authUser = data.user;
+    setUser(mapAuthUser(authUser));
+    setPage(isAdminUser(authUser) ? "admin" : "home");
   };
 
-  const logout = () => { setUser(null); setPage("home"); };
+  const doRegister = async ({ name, email, org, pass }) => {
+    setAuthMessage(null);
+
+    if (!isSupabaseConfigured) {
+      setAuthMessage({ type: "error", text: "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY first." });
+      return;
+    }
+
+    setAuthBusy(true);
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: pass,
+      options: {
+        data: {
+          full_name: name,
+          organization: org
+        }
+      }
+    });
+    setAuthBusy(false);
+
+    if (error) {
+      setAuthMessage({ type: "error", text: error.message });
+      return;
+    }
+
+    if (data.session?.user) {
+      setUser(mapAuthUser(data.session.user));
+      setPage("home");
+      return;
+    }
+
+    setAuthMessage({ type: "success", text: "Account created. Please check your email to confirm your account before logging in." });
+  };
+
+  const logout = async () => {
+    if (isSupabaseConfigured) await supabase.auth.signOut();
+    setUser(null);
+    setPage("home");
+  };
   const t = T[lang];
 
   return (
@@ -3433,10 +3532,10 @@ export default function App() {
       {page==="amata-awards" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_eco,page:"eco-factory"},{label:t.menu_awards}]} nav={nav}/><AmataAwardsPage lang={lang} nav={nav} /></>}
       {page==="factory-check" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_eco,page:"eco-factory"},{label:t.menu_fcheck}]} nav={nav}/><FactoryCheckPage lang={lang} nav={nav} /></>}
       {page==="blog" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_knowledge}]} nav={nav}/><BlogPage t={t} lang={lang} nav={nav} articles={articles} /></>}
-      {page==="blog-detail" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_knowledge,page:"blog"},{label:lang==="th"?selArt?.title_th?.slice(0,40)+"…":selArt?.title_en?.slice(0,40)+"…"}]} nav={nav}/><BlogDetail t={t} lang={lang} article={selArt} nav={nav} /></>}
+      {page==="blog-detail" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_knowledge,page:"blog"},{label:lang==="th"?selArt?.title_th?.slice(0,40)+"…":selArt?.title_en?.slice(0,40)+"…"}]} nav={nav}/><BlogDetail lang={lang} article={selArt} nav={nav} /></>}
       {page==="experts" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.experts}]} nav={nav}/><ExpertsPage t={t} lang={lang} experts={experts} /></>}
-      {page==="login" && <LoginPage t={t} nav={nav} doLogin={doLogin} />}
-      {page==="register" && <RegisterPage t={t} nav={nav} doLogin={doLogin} />}
+      {page==="login" && <LoginPage t={t} nav={nav} doLogin={doLogin} authBusy={authBusy} authMessage={authMessage} />}
+      {page==="register" && <RegisterPage t={t} nav={nav} doRegister={doRegister} authBusy={authBusy} authMessage={authMessage} />}
       {page==="admin" && user?.role==="admin" && (
         <AdminPanel t={t} lang={lang} articles={articles} setArticles={setArticles} experts={experts} setExperts={setExperts} slides={slides} setSlides={setSlides} footer={footer} setFooter={setFooter} menus={menus} setMenus={setMenus} sec={sec} setSec={setSec} />
       )}
