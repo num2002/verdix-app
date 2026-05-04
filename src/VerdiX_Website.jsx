@@ -617,7 +617,7 @@ function BackToTop() {
 // ─── Navbar ───────────────────────────────────────────────────
 function Navbar({ t, lang, setLang, page, nav, user, logout, menus }) {
   const activeMenus = normalizeMenus(menus).filter(m => m.active !== false);
-  const topMenus = activeMenus.filter(m => !m.parent_id).sort((a,b) => (a.order || 0) - (b.order || 0));
+  const topMenus = activeMenus.filter(m => !m.parent_id && m.page !== "home").sort((a,b) => (a.order || 0) - (b.order || 0));
   const childrenOf = (id) => activeMenus.filter(m => String(m.parent_id) === String(id)).sort((a,b) => (a.order || 0) - (b.order || 0));
   const labelOf = (m) => lang === "th" ? (m.label_th || m.label_en) : (m.label_en || m.label_th);
   const goTopMenu = (menuPage) => {
