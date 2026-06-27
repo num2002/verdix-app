@@ -1,0 +1,11 @@
+id	email	full_name	role	is_active	is_email_verified	created_at	updated_at
+dae48be3-6587-4f93-a69e-acd216b49b64	khomsans@gmail.com	Khomsan Suksena	factory	t	t	2026-06-13 11:04:01.999516+00	2026-06-13 11:04:01.999516+00
+ae774386-3638-43b0-b376-db666f84c700	kannika@amata.com	นางสาวกรรณิการ์  บุญมา	factory	t	t	2026-06-10 03:15:05.505849+00	2026-06-10 03:19:31.593518+00
+918cb541-de41-4b24-a9c9-2dabe723e6d0	bongkot0591@gmail.com	Bongkot Jinda	factory	t	t	2026-05-27 02:12:18.685403+00	2026-05-27 02:12:18.685403+00
+8d7201ac-76c7-4c2d-a26e-40aea7a4dc50	bongkot@amata.com	บงกช  จินดา	factory	t	f	2026-05-27 02:04:04.931306+00	2026-05-27 02:04:04.931306+00
+54d778fb-d2d8-468b-af8a-3d6e58339627	witchayakul.tw@gmail.com	Thananan Witchayakul	factory	t	t	2026-05-26 03:47:59.154621+00	2026-05-26 03:47:59.154621+00
+7381e6e4-4ca2-4685-8737-dd43ff2ed130	boyzfunhouse@gmail.com	Boon Tungisarawutigul	factory	t	t	2026-05-18 14:28:28.862384+00	2026-05-18 14:28:28.862384+00
+d9a711c2-557f-4d51-8825-2785a47aaeae	boonsanti@gmail.com	boonsanti@gmail.com	factory	t	t	2026-05-13 08:53:42.214496+00	2026-05-18 15:57:29.396409+00
+15281643-b56b-4c37-8579-630aef803ba2	komsonexport@hotmail.com	คมสันต์ สุขเสนา	factory	t	t	2026-05-12 23:38:03.082193+00	2026-05-12 23:38:23.353055+00
+9c2b1cbc-e417-4c6e-afb0-532a85a4cd1b	eco@verdixgreen.com	Administrator	admin	t	t	2026-05-06 13:23:28.010912+00	2026-05-06 13:23:28.010912+00
+(9 rows)

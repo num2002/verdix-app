@@ -1,0 +1,2 @@
+origin	https://***@gitlab.com/bst-tech/verdixgreen-eco-factory-app.git (fetch)
+origin	https://***@gitlab.com/bst-tech/verdixgreen-eco-factory-app.git (push)

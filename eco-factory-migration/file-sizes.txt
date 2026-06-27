@@ -1,0 +1,14 @@
+SHA256SUMS	506 bytes
+docker-compose.prod.yml	1914 bytes
+eco_factory.dump	61478 bytes
+env.production.redacted	458 bytes
+env.production.secret	524 bytes
+file-sizes.txt	0 bytes
+frontend-html.tar.gz	330871 bytes
+git-log.txt	1448 bytes
+git-remote-redacted.txt	157 bytes
+git-status.txt	5784 bytes
+inventory.txt	1017 bytes
+schema.sql	34166 bytes
+tables.txt	593 bytes
+uploads.tar.gz	104 bytes

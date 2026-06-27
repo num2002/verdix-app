@@ -1,0 +1,63 @@
+name: eco-factory-owned
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eco_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: eco_factory
+    volumes:
+      - eco_factory_owned_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eco_user -d eco_factory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: eco_user
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: eco_factory
+      APP_PORT: 8080
+      UPLOAD_DIR: /app/uploads
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      APP_BASE_URL: ${APP_BASE_URL}
+      BACKEND_BASE_URL: ${BACKEND_BASE_URL}
+      FROM_EMAIL: ${FROM_EMAIL}
+      EMAIL_VERIFICATION_ENABLED: ${EMAIL_VERIFICATION_ENABLED:-false}
+      ADMIN_APPROVAL_REQUIRED: ${ADMIN_APPROVAL_REQUIRED:-false}
+      TURNSTILE_ENABLED: ${TURNSTILE_ENABLED:-false}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      LINE_CHANNEL_ID: ${LINE_CHANNEL_ID:-}
+      LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET:-}
+    volumes:
+      - eco_factory_owned_uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ../frontend
+    restart: unless-stopped
+    ports:
+      - "18080:80"
+    depends_on:
+      - backend
+
+volumes:
+  eco_factory_owned_pgdata:
+  eco_factory_owned_uploads:

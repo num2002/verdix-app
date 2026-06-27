@@ -1,0 +1,16 @@
+=== date ===
+2026-06-14T08:45:49+07:00
+=== hostname ===
+ubuntu
+=== docker ps ===
+NAMES                    IMAGE                                                                        STATUS                 PORTS
+eco-factory-frontend-1   registry.gitlab.com/bst-tech/verdixgreen-eco-factory-app/frontend:1b5a05ea   Up 3 weeks             0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp
+eco-factory-backend-1    registry.gitlab.com/bst-tech/verdixgreen-eco-factory-app/backend:1b5a05ea    Up 3 weeks             8080/tcp
+eco-factory-db-1         postgres:16-alpine                                                           Up 4 weeks (healthy)   5432/tcp
+=== docker images used ===
+/eco-factory-frontend-1 registry.gitlab.com/bst-tech/verdixgreen-eco-factory-app/frontend:1b5a05ea
+/eco-factory-backend-1 registry.gitlab.com/bst-tech/verdixgreen-eco-factory-app/backend:1b5a05ea
+/eco-factory-db-1 postgres:16-alpine
+=== volumes ===
+local     eco-factory_pgdata
+local     eco-factory_uploads

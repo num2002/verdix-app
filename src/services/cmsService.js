@@ -2,6 +2,7 @@ import { isSupabaseConfigured, supabase } from "../lib/supabase";
 
 const keys = {
   articles: "verdix.articles",
+  documents: "verdix.documents",
   experts: "verdix.experts",
   slides: "verdix.heroSlides",
   menus: "verdix.menus",
@@ -41,6 +42,9 @@ async function list(table, fallback) {
 
 async function replaceAll(table, rows) {
   writeLocal(keys[table], rows);
+  const dbRows = table === "menus"
+    ? rows.map(({ eco_tab, carbon_tab, ...row }) => row)
+    : rows;
 
   if (!isSupabaseConfigured) return rows;
   if (!(await hasAuthSession())) return rows;
@@ -51,8 +55,8 @@ async function replaceAll(table, rows) {
     return rows;
   }
 
-  if (rows.length) {
-    const { error: insertError } = await supabase.from(table).insert(rows);
+  if (dbRows.length) {
+    const { error: insertError } = await supabase.from(table).insert(dbRows);
     if (insertError) console.warn(`[cmsService] Failed to save ${table}`, insertError);
   }
 
@@ -73,7 +77,19 @@ async function getFooter(fallback) {
     return readLocal(keys.footer, fallback);
   }
 
-  return data?.settings ? { ...fallback, ...data.settings } : readLocal(keys.footer, fallback);
+  let merged = data?.settings ? { ...fallback, ...data.settings } : readLocal(keys.footer, fallback);
+  // Auto-migrate: if stored Supabase data lacks email2 it's the old schema —
+  // force-apply the new contact defaults so stale values don't leak through.
+  if (data?.settings && !data.settings.email2) {
+    merged = {
+      ...merged,
+      email: fallback.email,
+      email2: fallback.email2,
+      phone: fallback.phone,
+      location2: fallback.location2,
+    };
+  }
+  return merged;
 }
 
 async function saveFooter(footer) {

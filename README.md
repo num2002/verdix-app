@@ -36,3 +36,14 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 Do not commit `.env`; keep production secrets on the server.
 
 CMS writes are protected by Supabase Auth. Public users can read content, while CMS updates require a user whose `app_metadata.role` is `admin`.
+
+## Admin Login
+
+Create the admin user in Supabase Authentication:
+
+```text
+Email: admin@verdixgreen.com
+```
+
+Set the password in the Supabase Dashboard, then run `supabase/admin-user.sql`
+in the Supabase SQL editor to grant admin access.

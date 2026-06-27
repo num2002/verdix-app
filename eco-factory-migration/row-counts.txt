@@ -1,0 +1,5 @@
+applications=6
+users=9
+waste_award_assessments=2
+wp_self_audits=1
+file_uploads=0

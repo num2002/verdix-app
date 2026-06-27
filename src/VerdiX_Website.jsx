@@ -1,6 +1,29 @@
 import { useEffect, useState } from "react";
-import { getUserRole, isAdminUser, isSupabaseConfigured, supabase } from "./lib/supabase";
+import { getUserRole, isAdminRole, isAdminUser, isSupabaseConfigured, supabase } from "./lib/supabase";
 import { cmsService } from "./services/cmsService";
+import { cfoAssessmentService } from "./services/cfoAssessmentService";
+import { tgiSurveyService } from "./services/tgiSurveyService";
+import { userRoleService } from "./services/userRoleService";
+import { TGI_GOOGLE_GRID_FIELDS } from "./data/tgiGoogleGridFields";
+
+const USER_ROLE_OPTIONS = [
+  { value: "super_admin", label: "Super Admin" },
+  { value: "admin", label: "Admin" },
+  { value: "tgi_report_viewer", label: "TGI Report Viewer" },
+  { value: "standard_user", label: "Standard User" },
+];
+
+function userRoleLabel(role) {
+  return USER_ROLE_OPTIONS.find((item) => item.value === role)?.label || "Standard User";
+}
+
+function canViewTgiReports(role) {
+  return role === "super_admin" || role === "admin" || role === "tgi_report_viewer";
+}
+
+function canAccessAdminPanel(role) {
+  return role === "super_admin" || role === "admin" || role === "tgi_report_viewer";
+}
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -36,48 +59,79 @@ input,textarea,select{font-family:inherit}
 /* Navbar */
 .nav{position:sticky;top:0;z-index:100;background:rgba(27,67,50,.97);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.08)}
 .nav-inner{display:flex;align-items:center;justify-content:space-between;height:64px;max-width:1320px;margin:0 auto;padding:0 20px;gap:18px}
-.nav-logo{cursor:pointer;display:flex;align-items:center}
+.nav-logo{cursor:pointer;display:flex;align-items:center;flex:0 0 auto;min-width:84px;overflow:visible;padding-right:10px}
 .nav-tagline{font-size:9px;color:rgba(255,255,255,.4);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-top:-2px}
-.nav-links{display:flex;align-items:center;gap:3px;min-width:0;flex:1;justify-content:flex-end}
+.nav-links{display:flex;align-items:center;gap:4px;min-width:0;flex:1;justify-content:flex-start;overflow:visible}
 .nav-item{position:relative;display:flex;align-items:center}
-.nav-btn{background:transparent;border:none;color:rgba(255,255,255,.75);padding:8px 9px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;line-height:1.2}
+.nav-btn{background:transparent;border:none;color:rgba(255,255,255,.75);padding:8px 8px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;line-height:1.2}
 .nav-btn:hover,.nav-btn.active{color:#fff;background:rgba(255,255,255,.1)}
-.nav-btn.nav-awards{max-width:174px;white-space:normal;text-align:center;line-height:1.2}
+.nav-btn.nav-awards{max-width:none;white-space:nowrap;text-align:center;line-height:1.2}
 .nav-caret{font-size:10px;margin-left:5px;color:rgba(255,255,255,.55)}
 .sub-menu{position:absolute;top:calc(100% + 8px);left:0;min-width:230px;background:#fff;border:1px solid rgba(229,231,235,.92);border-radius:10px;box-shadow:0 18px 44px rgba(16,40,30,.18);padding:8px;opacity:0;visibility:hidden;transform:translateY(6px);transition:all .16s;z-index:120}
-.nav-item:hover .sub-menu{opacity:1;visibility:visible;transform:translateY(0)}
+.nav-item:hover .sub-menu,.nav-item.open .sub-menu,.nav-item:focus-within .sub-menu{opacity:1;visibility:visible;transform:translateY(0)}
 .sub-menu button{width:100%;border:none;background:transparent;color:var(--g1);padding:9px 10px;border-radius:7px;text-align:left;font-size:13px;font-weight:700;line-height:1.35}
 .sub-menu button:hover,.sub-menu button.active{background:#ECFDF5;color:#047857}
 .lang-btn{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;cursor:pointer;margin-left:5px;transition:all .15s;white-space:nowrap}
 .lang-btn:hover{background:rgba(255,255,255,.22)}
 
 /* Brand logo */
-.brand-logo{display:inline-flex;flex-direction:column;align-items:flex-start;font-family:Arial Black,Impact,'DM Sans',sans-serif;line-height:.84;letter-spacing:0;text-transform:uppercase;width:max-content}
-.brand-main{display:flex;align-items:flex-end;gap:3px;position:relative;width:max-content}
-.brand-buu{color:#FFCC00;font-weight:900}
-.brand-u2{color:#8D8D8D}
-.brand-x{color:#D9D9D9;font-weight:900;font-size:.58em;align-self:center;margin:0 1px}
-.brand-c{position:relative;color:#5A7F16;font-weight:900}
-.brand-c::after{content:"";position:absolute;right:-.26em;top:.34em;width:.18em;height:.18em;border:.055em solid #2AF080;border-radius:50%;background:transparent}
-.brand-sub{position:absolute;left:calc(100% - 1.05em);top:82%;color:#5A7F16;font-family:'DM Sans',sans-serif;font-weight:900;letter-spacing:.04em;text-transform:none;line-height:1.1;white-space:nowrap}
-.brand-line{width:1.22em;height:.1em;background:#FFCC00;margin-top:.16em}
-.brand-logo.nav-brand{font-size:25px}
-.brand-logo.nav-brand .brand-sub{font-size:8px}
-.brand-logo.auth-brand{font-size:48px;margin-bottom:16px}
-.brand-logo.auth-brand .brand-sub{font-size:12px}
+.brand-logo{display:inline-flex;align-items:center;width:min(260px,100%);aspect-ratio:3.35/1;overflow:hidden;line-height:0}
+.brand-logo img{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
+.brand-logo.nav-brand{width:148px;height:44px}
+.nav-wordmark{display:inline-flex;align-items:baseline;gap:0;font-family:'DM Sans',Arial,sans-serif;font-size:23px;font-weight:900;letter-spacing:-.4px;line-height:1}
+.nav-wordmark .word-verdi{color:#2BD11F}
+.nav-wordmark .word-x{color:#18A8F4}
+.nav-wordmark .nav-mark-sub{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.footer-wordmark{display:inline-flex;align-items:baseline;font-family:'DM Sans',Arial,sans-serif;font-size:30px;font-weight:900;letter-spacing:-.5px;line-height:1;margin:0 0 18px 0}
+.footer-wordmark .word-verdi{color:#2BD11F}
+.footer-wordmark .word-x{color:#18A8F4}
+.footer-wordmark .footer-mark-sub{display:block;position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.auth-wordmark{display:inline-flex;flex-direction:column;align-items:flex-start;width:max-content;margin-bottom:30px;font-family:'DM Sans',Arial,sans-serif;line-height:1}
+.auth-wordmark-main{display:inline-flex;align-items:baseline;font-size:clamp(74px,7vw,106px);font-weight:900;letter-spacing:-.5px}
+.auth-wordmark .word-verdi{color:#2BD11F}
+.auth-wordmark .word-x{color:#18A8F4}
+.auth-wordmark-sub{display:block;margin-top:4px;color:rgba(255,255,255,.68);font-size:11px;font-weight:800;letter-spacing:.02em;line-height:1.25}
+.auth-card .auth-wordmark{align-items:center;width:100%;margin-bottom:28px}
+.auth-card .auth-wordmark-main{font-size:52px}
+.auth-card .auth-wordmark-sub{color:#18352b;font-size:7px;letter-spacing:.01em}
+.brand-logo.auth-brand{width:min(380px,100%);margin-bottom:16px}
 .auth-hero .brand-logo.auth-brand{margin-bottom:26px}
-.auth-card .brand-logo.auth-brand{font-size:32px;margin-bottom:18px}
-.auth-card .brand-logo.auth-brand .brand-sub{font-size:8px}
-.brand-logo.admin-brand-mark{font-size:34px}
-.brand-logo.admin-brand-mark .brand-sub{font-size:9px}
-.brand-logo.footer-brand{font-size:38px;margin-bottom:16px}
-.brand-logo.footer-brand .brand-sub{font-size:10px}
-.brand-logo.hero-brand{font-size:clamp(52px,8vw,96px);margin-bottom:8px}
-.brand-logo.hero-brand .brand-sub{font-size:.17em}
-.footer-partner-logo{width:min(300px,100%);margin:10px 0 18px;display:block}
+.auth-card .brand-logo.auth-brand{width:min(280px,100%);margin-bottom:18px}
+.brand-logo.admin-brand-mark{width:220px}
+.brand-logo.footer-brand{width:min(168px,100%);margin:0 0 18px -18px}
+.brand-logo.hero-brand{width:min(720px,100%);margin:0 0 8px -64px}
+.footer-partners{margin-top:38px;padding:24px 0 2px;border-top:1px solid rgba(255,255,255,.1)}
+.footer-partners-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:18px}
+.footer-partners-title{font-size:12px;letter-spacing:1.8px;text-transform:uppercase;color:#fff;font-weight:900}
+.footer-partners-note{font-size:13px;color:rgba(255,255,255,.56);line-height:1.55;max-width:420px;text-align:right}
+.footer-partner-list{min-height:112px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.045);border-radius:12px;padding:18px 22px;display:flex;align-items:center;justify-content:flex-start;gap:0;flex-wrap:wrap}
+.footer-partner-card{min-height:70px;padding:4px 2px;display:flex;align-items:center;justify-content:center;transition:background .18s,border-color .18s,transform .18s;text-decoration:none;color:inherit;border-radius:8px}
+.footer-partner-card:hover{background:rgba(255,255,255,.07);transform:translateY(-1px)}
+.footer-partner-logo{width:176px;display:block}
 .footer-partner-logo svg{width:100%;height:auto;display:block}
+.footer-partner-img{display:block;max-width:100%;width:auto;max-height:64px;object-fit:contain}
+.footer-partner-img.partner-buu-planet-c{max-height:54px;max-width:150px}
+.footer-partner-name{font-size:14px;font-weight:800;color:#fff;text-align:center;line-height:1.45}
 .partner-buu{font-family:Arial Black,Impact,'DM Sans',sans-serif;font-weight:900;letter-spacing:-3px}
 .partner-caption{font-family:'DM Sans',Arial,sans-serif;font-weight:900;letter-spacing:.04em}
+.about-split,.about-market{display:grid;grid-template-columns:1.1fr .9fr;gap:34px;align-items:start}
+.about-market{grid-template-columns:1fr 1fr;gap:28px;align-items:center}
+.about-hero-article{max-width:1080px;margin-top:26px;padding:26px 30px;border-radius:16px;background:rgba(255,255,255,.78);border:1px solid rgba(183,205,193,.55);box-shadow:0 18px 48px rgba(16,40,30,.08);backdrop-filter:blur(8px)}
+.about-hero-article h2{font-family:'DM Sans',sans-serif;font-size:24px;line-height:1.45;color:var(--g1);margin:0 0 16px;font-weight:900}
+.about-hero-article p{max-width:none!important;margin:0 0 16px!important;color:#263b31!important;font-size:17px!important;line-height:1.95!important}
+.about-hero-article p:last-child{margin-bottom:0!important}
+.about-hero-article h3{font-family:'DM Sans',sans-serif;font-size:22px;line-height:1.45;color:var(--g1);margin:26px 0 14px;font-weight:900}
+.about-hero-article ul{display:grid;gap:10px;margin:4px 0 18px;padding-left:28px;color:#263b31;font-size:17px;line-height:1.85}
+.about-hero-article li{padding-left:4px}
+.about-card-image{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:12px;margin-bottom:20px;border:1px solid rgba(255,255,255,.16);box-shadow:0 18px 40px rgba(0,0,0,.18);background:rgba(255,255,255,.08)}
+.about-feature-row{display:grid;grid-template-columns:170px minmax(180px,260px) 1fr;gap:20px;align-items:start}
+.about-feature-image{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:12px;border:1px solid rgba(229,231,235,.9);box-shadow:0 12px 28px rgba(16,40,30,.08);background:#fff}
+.about-wide-image{width:100%;max-height:360px;object-fit:cover;border-radius:14px;border:1px solid rgba(229,231,235,.92);box-shadow:0 18px 42px rgba(16,40,30,.1);margin-bottom:24px;background:#fff}
+.about-market-image{width:100%;border-radius:14px;border:1px solid rgba(229,231,235,.92);box-shadow:0 18px 42px rgba(16,40,30,.1);background:#fff;margin-bottom:16px}
+@media(max-width:1120px){.nav-inner{gap:10px;padding:0 12px}.nav-logo{min-width:76px;padding-right:8px}.nav-wordmark{font-size:21px}.brand-logo.nav-brand{width:126px;height:40px}.nav-btn{font-size:12px;padding:8px 6px}.nav-caret{margin-left:3px}}
+@media(max-width:980px){.nav-logo{min-width:72px}.nav-wordmark{font-size:20px}}
+@media(max-width:560px){.nav-inner{padding:0 8px;gap:6px}.nav-logo{min-width:66px;padding-right:6px}.nav-wordmark{font-size:18px}.brand-logo.nav-brand{width:106px;height:34px}.nav-btn{font-size:12px;padding:8px 5px}}
+@media(max-width:900px){.about-split,.about-market,.about-feature-row{grid-template-columns:1fr!important}}
 
 /* Breadcrumb */
 .breadcrumb{background:#fff;border-bottom:1px solid var(--border);padding:10px 0}
@@ -156,9 +210,22 @@ input,textarea,select{font-family:inherit}
 
 /* Articles */
 .articles-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:26px}
+.solution-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:22px}
+.solution-grid .feat-card{display:flex;flex-direction:column;min-width:0}
+.feat-image-btn{width:100%;border:0;background:transparent;padding:0;margin:0 0 18px;display:block;text-align:left;cursor:zoom-in;border-radius:10px}
+.feat-image{width:100%;height:152px;aspect-ratio:16/9;object-fit:contain;object-position:center;border-radius:10px;border:1px solid rgba(229,231,235,.9);box-shadow:0 10px 24px rgba(16,40,30,.08);display:block;background:#fff;padding:6px;transition:transform .18s,box-shadow .18s}
+.feat-image-btn:hover .feat-image{transform:translateY(-2px);box-shadow:0 16px 34px rgba(16,40,30,.14)}
+.image-modal-backdrop{position:fixed;inset:0;background:rgba(8,21,16,.82);z-index:1000;display:flex;align-items:center;justify-content:center;padding:28px;backdrop-filter:blur(5px)}
+.image-modal{position:relative;width:min(96vw,1320px);max-height:92vh;background:#fff;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.35);padding:14px;overflow:auto}
+.image-modal img{width:100%;height:auto;display:block;border-radius:10px}
+.image-modal-close{position:sticky;top:0;margin-left:auto;margin-bottom:10px;min-width:64px;height:38px;border:0;border-radius:999px;background:var(--g1);color:#fff;font-size:14px;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;gap:6px;z-index:2;padding:0 14px}
+.image-modal-close:hover{background:var(--g2)}
+@media(max-width:600px){.image-modal-backdrop{padding:10px}.image-modal{width:100%;max-height:94vh;padding:10px}.image-modal-close{min-width:58px;height:34px;font-size:13px}}
 .art-card{cursor:pointer;background:#fff;border:1px solid rgba(229,231,235,.82);border-radius:12px;overflow:hidden;box-shadow:0 12px 28px rgba(16,40,30,.08);display:flex;flex-direction:column;min-height:390px;transition:transform .2s,box-shadow .2s,border-color .2s}
 .art-card:hover{transform:translateY(-4px);box-shadow:0 20px 42px rgba(16,40,30,.13);border-color:rgba(82,183,136,.38)}
-.art-img{height:138px;background:linear-gradient(135deg,#EAF8EF,#D8F3DC);display:flex;align-items:center;justify-content:center;font-size:42px;border-bottom:1px solid rgba(229,231,235,.7)}
+.art-img{height:138px;background:linear-gradient(135deg,#EAF8EF,#D8F3DC);display:flex;align-items:center;justify-content:center;font-size:42px;border-bottom:1px solid rgba(229,231,235,.7);overflow:hidden}
+.art-img.has-image{height:auto;aspect-ratio:3/2;background:#EAF8EF}
+.art-img img{width:100%;height:100%;object-fit:cover;display:block}
 .art-body{padding:20px;display:flex;flex-direction:column;flex:1}
 .art-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 .art-meta .badge{white-space:nowrap}
@@ -168,6 +235,137 @@ input,textarea,select{font-family:inherit}
 .art-footer{margin-top:auto;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:14px;font-size:13px;color:var(--muted)}
 .art-author{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .read-more{color:var(--g2);font-weight:800;white-space:nowrap}
+.article-page{background:linear-gradient(180deg,#F7FBF8 0%,#fff 34%,#FAFAF8 100%);padding:34px 0 82px}
+.detail-wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+.back-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(82,183,136,.28);background:#fff;color:var(--g1);border-radius:999px;padding:9px 16px;font-size:13px;font-weight:800;box-shadow:0 8px 20px rgba(16,40,30,.06);transition:all .18s;margin-bottom:22px}
+.back-btn:hover{transform:translateY(-1px);border-color:var(--ga);box-shadow:0 12px 26px rgba(16,40,30,.1)}
+.article-hero{position:relative;overflow:hidden;border-radius:18px;background:linear-gradient(135deg,#10281e 0%,#1B4332 52%,#40916C 100%);color:#fff;padding:48px;box-shadow:0 24px 70px rgba(16,40,30,.18);margin-bottom:28px}
+.article-hero::after{content:"";position:absolute;right:-70px;bottom:-90px;width:260px;height:260px;border-radius:50%;border:46px solid rgba(216,243,220,.18)}
+.article-kicker{display:flex;align-items:center;gap:10px;position:relative;z-index:1;margin-bottom:18px;flex-wrap:wrap}
+.article-hero .badge{background:rgba(216,243,220,.96);color:var(--g1)}
+.detail-img{width:54px;height:54px;border-radius:16px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
+.detail-img.has-image{overflow:hidden;background:#fff;padding:3px}
+.detail-img img{width:100%;height:100%;object-fit:cover;border-radius:12px;display:block}
+.detail-title{position:relative;z-index:1;color:#fff;font-size:clamp(34px,5vw,58px);letter-spacing:0;max-width:880px;margin-bottom:18px}
+.detail-meta{position:relative;z-index:1;display:flex;align-items:center;gap:10px 18px;flex-wrap:wrap;color:rgba(255,255,255,.78);font-size:14px;font-weight:700}
+.article-shell{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:28px;align-items:start}
+.article-card{background:#fff;border:1px solid rgba(229,231,235,.86);border-radius:16px;box-shadow:0 18px 46px rgba(16,40,30,.09);padding:42px}
+.article-cover{margin:-18px -18px 34px;border-radius:14px;overflow:hidden;border:1px solid rgba(229,231,235,.9);box-shadow:0 16px 38px rgba(16,40,30,.1);background:#EAF8EF}
+.article-cover img{width:100%;display:block;aspect-ratio:3/2;object-fit:cover}
+.article-intro{font-size:20px;line-height:1.85;color:#24382f;margin-bottom:28px;padding-bottom:26px;border-bottom:1px solid var(--border)}
+.detail-body{font-size:17px;line-height:1.95;color:#27362f}
+.detail-body h2{font-size:clamp(25px,3vw,34px);color:var(--g1);margin:42px 0 14px}
+.detail-body p{margin:0 0 18px}
+.article-list{display:grid;gap:10px;margin:18px 0 28px;padding:0;list-style:none}
+.article-list li{position:relative;background:#F8FCF9;border:1px solid #E2F3E8;border-radius:10px;padding:12px 14px 12px 42px;color:#254237;font-weight:700;line-height:1.55}
+.article-list li::before{content:"";position:absolute;left:16px;top:20px;width:9px;height:9px;border-radius:50%;background:var(--ga);box-shadow:0 0 0 5px rgba(82,183,136,.14)}
+.article-callout{background:linear-gradient(135deg,#F0FDF4,#fff);border:1px solid #BBF7D0;border-left:5px solid var(--ga);border-radius:14px;padding:22px 24px;margin:28px 0;color:var(--g1);font-size:18px;line-height:1.8;font-weight:800}
+.article-quote{font-family:'Playfair Display',Georgia,serif;font-size:clamp(24px,3vw,34px);line-height:1.45;color:var(--g1);background:#F7FBF8;border-radius:14px;padding:28px;margin:34px 0 0;text-align:center}
+.article-cta-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:26px 0 18px}
+.article-cta-item{background:#10281e;color:#fff;border-radius:12px;padding:16px;font-weight:800;line-height:1.45;box-shadow:0 14px 28px rgba(16,40,30,.12)}
+.article-side{position:sticky;top:90px;display:grid;gap:14px}
+.article-side-card{background:#fff;border:1px solid rgba(229,231,235,.88);border-radius:14px;padding:20px;box-shadow:0 14px 34px rgba(16,40,30,.08)}
+.article-side-title{font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ga);font-weight:900;margin-bottom:12px}
+.article-side-card p{color:var(--muted);font-size:14px;line-height:1.75;margin-bottom:14px}
+.article-side-tags{display:flex;flex-wrap:wrap;gap:8px}
+.article-side-tags span{background:#ECFDF5;color:#047857;border:1px solid #BBF7D0;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:800}
+.article-side .btn-accent{width:100%;padding:11px 16px;font-size:14px}
+
+/* Download center */
+.download-hero{background:linear-gradient(135deg,#10281e,#1B4332 58%,#40916C);color:#fff;padding:54px 0 44px;border-bottom:1px solid rgba(255,255,255,.08)}
+.download-hero h1{font-size:clamp(34px,5vw,56px);color:#fff;margin-bottom:10px}
+.download-hero p{color:rgba(255,255,255,.76);font-size:17px;line-height:1.75;max-width:760px}
+.survey-page{background:#FBF2E3;padding:34px 0 72px}
+.survey-shell{max-width:1040px;margin:0 auto;padding:0 24px}
+.survey-hero{background:#fff;border-top:12px solid #356351;border-radius:12px;box-shadow:0 16px 44px rgba(16,40,30,.12);overflow:hidden;border-left:1px solid rgba(53,99,81,.16);border-right:1px solid rgba(53,99,81,.16);border-bottom:1px solid rgba(53,99,81,.16)}
+.survey-hero-inner{padding:30px 34px 28px}
+.survey-kicker{font-size:12px;letter-spacing:1.8px;text-transform:uppercase;color:#5D9894;font-weight:900;margin-bottom:10px}
+.survey-title{font-family:'Niramit','DM Sans',sans-serif;font-size:clamp(28px,4vw,42px);line-height:1.28;color:#356351;margin:0 0 16px;font-weight:900}
+.survey-intro{font-family:'Niramit','DM Sans',sans-serif;color:#30453c;font-size:16px;line-height:1.9;max-width:900px;margin:0}
+.survey-sections{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:22px}
+.survey-sections span{background:#FBF2E3;border:1px solid rgba(236,192,113,.55);border-radius:9px;padding:9px 12px;color:#356351;font-size:13px;font-weight:800}
+.survey-frame-card{margin-top:18px;background:#fff;border-radius:12px;border:1px solid rgba(53,99,81,.16);box-shadow:0 16px 44px rgba(16,40,30,.1);overflow:hidden}
+.survey-frame-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 18px;border-bottom:1px solid rgba(53,99,81,.12);background:#fff}
+.survey-frame-head strong{color:#356351;font-size:15px}
+.survey-frame-head a{color:#356351;font-size:13px;font-weight:900;text-decoration:none;border:1px solid rgba(53,99,81,.22);border-radius:999px;padding:7px 12px;background:#FBF2E3}
+.survey-frame{width:100%;height:7600px;border:0;display:block;background:#FBF2E3}
+.survey-form{display:grid;gap:22px;padding:24px 26px 28px}
+.survey-form-section{border:1px solid rgba(53,99,81,.14);border-radius:12px;padding:18px;background:#fff}
+.survey-form-section h2{font-family:'Niramit','DM Sans',sans-serif;color:#356351;font-size:20px;margin:0 0 14px;font-weight:900}
+.survey-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.survey-overview-section{background:linear-gradient(180deg,#fff,#F8FCF9)}
+.survey-part-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.survey-part-item{border:1px solid rgba(53,99,81,.14);border-radius:10px;background:#F8FCF9;color:#30453c;font-size:14px;line-height:1.55;font-weight:800;padding:10px 12px}
+.survey-field{display:grid;gap:7px}
+.survey-field label{font-size:14px;color:#1B4332;font-weight:800}
+.survey-required{color:#DC2626}
+.survey-radio-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.survey-radio{border:1px solid rgba(53,99,81,.16);border-radius:10px;padding:10px;background:#F8FCF9;display:flex;align-items:center;justify-content:center;gap:7px;font-weight:800;color:#356351;cursor:pointer}
+.survey-radio input{accent-color:#356351}
+.survey-check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.survey-check{display:flex;align-items:center;gap:9px;border:1px solid rgba(53,99,81,.14);border-radius:9px;padding:10px 12px;color:#30453c;font-weight:700;background:#F8FCF9}
+.survey-check input{accent-color:#356351}
+.survey-grid-groups{display:grid;gap:18px;margin-top:20px}
+.survey-grid-group{border:1px solid rgba(53,99,81,.12);border-radius:12px;background:#FAFFFC;overflow:hidden}
+.survey-grid-group h3{margin:0;padding:14px 16px;background:#EAF7EE;color:#1B4332;font-size:16px;line-height:1.55;font-weight:900}
+.survey-grid-table{display:grid}
+.survey-grid-row{display:grid;grid-template-columns:minmax(260px,1.2fr) minmax(360px,2fr);gap:12px;align-items:center;padding:12px 14px;border-top:1px solid rgba(53,99,81,.1)}
+.survey-grid-question{font-size:14px;line-height:1.55;color:#30453c;font-weight:800}
+.survey-radio-grid.compact{grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:7px}
+.survey-radio-grid.compact .survey-radio{min-height:38px;padding:8px 6px;font-size:13px}
+.survey-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.survey-submit-note{color:#6B7280;font-size:13px;line-height:1.6}
+.survey-message{border-radius:10px;padding:12px 14px;font-size:14px;font-weight:800}
+.survey-message.success{background:#DCFCE7;color:#166534;border:1px solid #BBF7D0}
+.survey-message.error{background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA}
+.download-tools{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:28px}
+.download-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px}
+.doc-card{background:#fff;border:1px solid rgba(210,216,224,.95);border-radius:7px;padding:0;box-shadow:0 4px 13px rgba(16,40,30,.07);display:flex;flex-direction:column;min-height:310px;overflow:hidden;transition:transform .18s,box-shadow .18s,border-color .18s}
+.doc-card:hover{transform:translateY(-2px);box-shadow:0 12px 26px rgba(16,40,30,.12);border-color:rgba(82,183,136,.38)}
+.doc-head{min-height:92px;padding:18px 16px;border-bottom:1px solid #E5E7EB;display:flex;align-items:flex-start}
+.doc-visual{flex:1;display:flex;align-items:center;justify-content:center;padding:30px 14px 18px}
+.doc-icon{width:90px;height:90px;border-radius:999px;background:#2F3740;color:#17202a;display:flex;align-items:center;justify-content:center;font-size:0;margin:0;position:relative}
+.doc-icon::before{content:"";width:46px;height:32px;border-radius:4px;background:currentColor;display:block;position:relative}
+.doc-icon::after{content:"";width:20px;height:7px;border-radius:4px 4px 0 0;background:currentColor;position:absolute;left:29px;top:27px}
+.doc-card.folder .doc-icon{background:#FFB900;color:#fff}
+.doc-card.folder .doc-icon::before{box-shadow:0 -9px 0 -3px rgba(255,255,255,.18)}
+.doc-title{font-size:15px;line-height:1.45;color:#0B2D59;font-weight:900;margin:0}
+.doc-desc{display:none}
+.doc-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto;padding-top:14px;border-top:1px solid var(--border)}
+.doc-meta span{background:#F8FAFC;border:1px solid #E5E7EB;border-radius:999px;padding:4px 9px;font-size:12px;color:#526174;font-weight:700}
+.doc-actions{padding:0 30px 30px;margin-top:auto}
+.doc-actions .btn-accent{font-size:15px;padding:10px 16px;width:100%;display:flex;align-items:center;justify-content:center;background:#28A745;border-radius:3px;line-height:1.35}
+.doc-actions .btn-accent:hover{background:#218838}
+.doc-detail-head{display:flex;align-items:center;justify-content:space-between;gap:20px;border-bottom:1px solid #D8DEE6;padding-bottom:14px;margin-bottom:2px}
+.doc-back{display:inline-flex;align-items:center;gap:8px;background:#0D6EFD;color:#fff;border:0;border-radius:3px;padding:10px 14px;font-size:14px;font-weight:800}
+.doc-detail-title{font-size:clamp(26px,3.5vw,36px);color:#0B2D59;text-align:right;margin:0}
+.doc-file-table{width:100%;border-collapse:collapse;background:#fff}
+.doc-table-wrap{width:100%;overflow-x:auto}
+.doc-file-table th{font-size:14px;color:#111827;text-align:left;padding:11px 8px;border-bottom:2px solid #D8DEE6;font-weight:900}
+.doc-file-table td{font-size:15px;color:#111827;padding:9px 8px;border-bottom:1px solid #D8DEE6;vertical-align:middle}
+.doc-file-name{font-weight:800;line-height:1.55}
+.doc-file-type{text-transform:lowercase;width:110px}
+.doc-file-action{width:230px}
+.doc-file-action .btn-accent{width:100%;display:flex;align-items:center;justify-content:center;background:#28A745;border-radius:3px;padding:10px 16px;font-size:15px;text-decoration:none}
+.doc-file-action .btn-accent:hover{background:#218838}
+@media(max-width:700px){.doc-detail-head{align-items:flex-start;flex-direction:column-reverse}.doc-detail-title{text-align:left}.doc-file-table{min-width:720px}.doc-file-action{width:190px}}
+
+/* Platform workflow */
+.platform-flow{background:#10281e;color:#fff;border-radius:18px;padding:34px;box-shadow:0 22px 60px rgba(16,40,30,.16);overflow:hidden;position:relative}
+.platform-flow::after{content:"";position:absolute;right:-70px;top:-90px;width:230px;height:230px;border-radius:50%;border:42px solid rgba(82,183,136,.12)}
+.platform-flow-head{position:relative;z-index:1;display:flex;align-items:flex-end;justify-content:space-between;gap:28px;margin-bottom:28px}
+.platform-flow-head h3{font-size:clamp(25px,3vw,36px);color:#fff;margin-bottom:8px}
+.platform-flow-head p{color:rgba(255,255,255,.68);font-size:15px;line-height:1.75;max-width:650px}
+.platform-flow-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.platform-flow-badges span{background:rgba(82,183,136,.16);border:1px solid rgba(82,183,136,.32);color:#B7F7CE;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;white-space:nowrap}
+.platform-flow-steps{position:relative;z-index:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.platform-step{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:18px 16px;min-height:150px}
+.platform-step-icon{width:38px;height:38px;border-radius:11px;background:rgba(82,183,136,.18);display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:14px}
+.platform-step-title{font-size:14px;font-weight:900;color:#fff;line-height:1.35;margin-bottom:7px}
+.platform-step-desc{font-size:12px;line-height:1.65;color:rgba(255,255,255,.64)}
+.platform-flow-cta{position:relative;z-index:1;margin-top:22px;padding-top:20px;border-top:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:space-between;gap:18px}
+.platform-flow-cta p{font-size:14px;line-height:1.7;color:rgba(255,255,255,.7);max-width:720px}
+.platform-flow-cta .btn-accent{font-size:14px;padding:11px 20px;white-space:nowrap}
 
 /* Auth */
 .auth-page{min-height:calc(100vh - 64px);background:linear-gradient(135deg,#F7FBF8 0%,#ECFDF5 46%,#fff 100%);display:grid;grid-template-columns:minmax(420px,1fr) minmax(340px,480px);align-items:stretch}
@@ -226,6 +424,78 @@ input,textarea,select{font-family:inherit}
 .menu-level.sub{background:#ECFDF5;color:#047857}
 .menu-indent{display:inline-block;width:18px;height:1px;background:var(--border);margin-right:8px;vertical-align:middle}
 .form-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.tgi-report-print{display:grid;gap:18px}
+.tgi-report-hero{background:linear-gradient(135deg,#10281e,#1B4332 58%,#40916C);color:#fff;border-radius:18px;padding:28px;box-shadow:0 18px 44px rgba(16,40,30,.14);position:relative;overflow:hidden}
+.tgi-report-hero::after{content:"";position:absolute;right:-80px;bottom:-110px;width:280px;height:280px;border-radius:50%;border:44px solid rgba(255,255,255,.08)}
+.tgi-report-kicker{font-size:12px;letter-spacing:1.8px;text-transform:uppercase;color:#BBF7D0;font-weight:900;margin-bottom:8px}
+.tgi-report-title{font-family:'Playfair Display',Georgia,serif;font-size:34px;line-height:1.15;font-weight:900;margin-bottom:8px;position:relative;z-index:1}
+.tgi-report-meta{color:rgba(255,255,255,.74);font-size:13px;line-height:1.6;position:relative;z-index:1}
+.tgi-print-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px;position:relative;z-index:1}
+.tgi-print-btn{border:0;background:#fff;color:var(--g1);border-radius:10px;padding:11px 16px;font-size:14px;font-weight:900;box-shadow:0 10px 24px rgba(0,0,0,.16);cursor:pointer}
+.tgi-print-btn:hover{background:#ECFDF5}
+.tgi-print-btn.secondary{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.36);box-shadow:none}
+.tgi-print-btn.secondary:hover{background:rgba(255,255,255,.22)}
+.tgi-report-actions{background:#fff;border:1px solid rgba(229,231,235,.9);border-radius:16px;padding:16px 18px;margin-bottom:18px;box-shadow:0 10px 28px rgba(16,40,30,.07)}
+.tgi-report-actions-title{font-size:15px;font-weight:900;color:var(--g1);margin-bottom:10px}
+.tgi-report-action-grid{display:flex;gap:10px;flex-wrap:wrap}
+.tgi-report-action-grid .btn-ghost,.tgi-report-action-grid .btn{white-space:nowrap}
+.tgi-executive-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(280px,.85fr);gap:18px}
+.tgi-panel{background:#fff;border:1px solid rgba(229,231,235,.9);border-radius:16px;padding:22px;box-shadow:0 12px 30px rgba(16,40,30,.07)}
+.tgi-panel-title{font-size:16px;font-weight:900;color:var(--g1);margin-bottom:12px}
+.tgi-summary-list{display:grid;gap:10px;margin:0;padding:0;list-style:none;color:#263b31;font-size:14px;line-height:1.65}
+.tgi-summary-list li{position:relative;padding-left:22px}
+.tgi-summary-list li::before{content:"";position:absolute;left:0;top:10px;width:8px;height:8px;border-radius:50%;background:var(--ga)}
+.tgi-score-ring{width:150px;height:150px;border-radius:50%;background:conic-gradient(var(--ga) calc(var(--score)*1%), #E5E7EB 0);display:flex;align-items:center;justify-content:center;margin:8px auto 14px;box-shadow:inset 0 0 0 14px #fff}
+.tgi-score-ring-inner{width:112px;height:112px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid #E5E7EB}
+.tgi-score-number{font-size:34px;font-weight:900;color:var(--g1);line-height:1}
+.tgi-score-label{font-size:12px;color:var(--muted);margin-top:4px}
+.tgi-bar-list{display:grid;gap:12px}
+.tgi-bar-row{display:grid;grid-template-columns:150px 1fr 54px;gap:12px;align-items:center;font-size:13px}
+.tgi-bar-track{height:10px;background:#E5E7EB;border-radius:999px;overflow:hidden}
+.tgi-bar-fill{height:100%;background:linear-gradient(90deg,var(--ga),#FFCC00);border-radius:999px}
+.tgi-dist-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.tgi-field-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.tgi-field-kpi{border:1px solid #DBEAFE;background:linear-gradient(180deg,#fff,#F8FBFF);border-radius:14px;padding:14px;min-width:0}
+.tgi-field-kpi-label{font-size:12px;color:#475569;font-weight:800;margin-bottom:4px}
+.tgi-field-kpi-value{font-size:24px;font-weight:900;color:#1E3A8A;line-height:1}
+.tgi-field-kpi-unit{font-size:12px;color:#64748B;margin-top:4px}
+.tgi-schedule-list{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.tgi-schedule-pill{display:inline-flex;align-items:center;gap:8px;border-radius:999px;background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE;padding:7px 11px;font-size:12px;font-weight:900}
+.tgi-rank-list{display:grid;gap:10px}
+.tgi-rank-item{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #EEF2F7;padding-bottom:9px;color:#263b31;font-size:13px}
+.tgi-rank-item:last-child{border-bottom:none;padding-bottom:0}
+.tgi-rank-label{font-weight:800;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tgi-rank-count{background:#ECFDF5;color:#047857;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:900;white-space:nowrap}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body *{visibility:hidden!important}
+  .tgi-report-print,.tgi-report-print *{visibility:visible!important}
+  .tgi-report-print{position:absolute!important;left:0!important;top:0!important;width:100%!important;display:block!important;background:#fff!important;color:#111827!important;padding:0!important}
+  .admin-wrap{display:block!important;background:#fff!important}
+  .admin-side,.adm-toolbar button,.tbl-actions,.ai-widget,.backtop,.announce-bar,.nav,.no-print,.tgi-print-actions{display:none!important}
+  .admin-main{padding:0!important;background:#fff!important}
+  .tgi-report-hero{box-shadow:none!important;border-radius:0!important}
+  .tgi-panel,.adm-stat,.tbl-wrap{box-shadow:none!important;break-inside:avoid}
+  .adm-stats,.tgi-executive-grid,.tgi-dist-grid{break-inside:avoid}
+  body.print-tgi-executive .tgi-detail-section,body.print-tgi-executive .tgi-raw-section{display:none!important}
+  body.print-tgi-executive .tgi-report-print{height:190mm!important;overflow:hidden!important}
+  body.print-tgi-executive .tgi-report-hero{padding:16px 20px!important;margin-bottom:10px!important}
+  body.print-tgi-executive .tgi-report-title{font-size:26px!important;margin-bottom:5px!important}
+  body.print-tgi-executive .tgi-report-meta{font-size:11px!important;line-height:1.45!important}
+  body.print-tgi-executive .adm-stats{display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:8px!important;margin:8px 0!important}
+  body.print-tgi-executive .adm-stat{padding:12px!important}
+  body.print-tgi-executive .adm-stat-icon{font-size:18px!important}
+  body.print-tgi-executive .adm-stat-n{font-size:20px!important}
+  body.print-tgi-executive .adm-stat-l{font-size:10px!important}
+  body.print-tgi-executive .tgi-executive-grid{display:grid!important;grid-template-columns:1.25fr .75fr!important;gap:10px!important}
+  body.print-tgi-executive .tgi-panel{padding:14px!important}
+  body.print-tgi-executive .tgi-summary-list{font-size:12px!important;line-height:1.45!important;gap:6px!important}
+  body.print-tgi-executive .tgi-score-ring{width:118px!important;height:118px!important;margin:4px auto!important}
+  body.print-tgi-executive .tgi-score-ring-inner{width:86px!important;height:86px!important}
+  body.print-tgi-executive .tgi-score-number{font-size:26px!important}
+  body.print-tgi-raw .tgi-exec-section,body.print-tgi-raw .tgi-detail-section{display:none!important}
+  body.print-tgi-raw .tgi-raw-section{display:block!important}
+}
 .overlay{position:fixed;inset:0;background:rgba(16,40,30,.5);z-index:200;display:flex;align-items:center;justify-content:center;padding:24px}
 .modal{width:min(720px,100%);max-height:88vh;overflow:auto;background:#fff;border-radius:16px;padding:26px;box-shadow:0 30px 80px rgba(0,0,0,.24)}
 .modal-title{font-size:24px;color:var(--g1);margin-bottom:18px}
@@ -243,36 +513,60 @@ input,textarea,select{font-family:inherit}
 .prog-fill{height:100%;background:var(--ga);border-radius:4px;transition:width .4s}
 
 /* Hero slideshow */
-.hero{position:relative;overflow:hidden;min-height:520px;display:flex;align-items:center;background:#f7fbf8}
-.hero::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(250,250,248,.96) 0%,rgba(250,250,248,.88) 46%,rgba(250,250,248,.45) 100%);z-index:1}
+.hero{background:#fff;padding:18px 0 0}
+.hero + .section{padding-top:38px}
+.hero-frame{position:relative;overflow:hidden;aspect-ratio:1300/588;min-height:0;display:flex;align-items:center;background:#f7fbf8;border-radius:18px;border:1px solid rgba(229,231,235,.92);box-shadow:0 14px 30px rgba(16,40,30,.07)}
+.hero-frame::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(250,250,248,.97) 0%,rgba(250,250,248,.88) 48%,rgba(250,250,248,.5) 100%);z-index:1}
 .hero-bg{position:absolute;inset:0;background-size:cover;background-position:center;transition:background-image .35s ease;filter:saturate(.95)}
-.hero .container{position:relative;z-index:2;width:100%}
-.hero-copy{max-width:720px}
-.hero-tag{display:inline-flex;align-items:center;gap:6px;color:var(--g1);font-size:15px;font-weight:500;margin-bottom:4px}
-.hero-title{font-size:clamp(38px,6vw,70px);color:var(--g1);letter-spacing:0;margin-bottom:4px}
+.hero .container{position:relative;width:100%;max-width:1340px;padding:0 20px}
+.hero-copy{position:relative;z-index:2;max-width:520px;padding:18px 32px}
+.hero-tag{display:inline-flex;align-items:center;gap:6px;color:var(--g1);font-size:12px;font-weight:600;margin-bottom:2px}
+.hero-title{font-size:clamp(27px,3vw,38px);line-height:1.08;color:var(--g1);letter-spacing:0;margin-bottom:2px}
 .hero-title em{color:var(--ga);font-style:normal}
-.hero-kicker{font-size:clamp(18px,2.5vw,26px);color:var(--ga);font-family:'Playfair Display',serif;font-style:italic;margin-bottom:14px;letter-spacing:0}
-.hero-sub{color:var(--text);font-size:16px;line-height:1.8;max-width:780px;margin-bottom:22px}
-.hero-ctas{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:28px}
+.hero-kicker{font-size:clamp(15px,1.7vw,19px);color:var(--ga);font-family:'Playfair Display',serif;font-style:italic;margin-bottom:7px;letter-spacing:0}
+.hero-sub{color:var(--text);font-size:13px;line-height:1.55;max-width:520px;margin-bottom:10px}
+.hero-ctas{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:0}
 .hero .btn-ghost{color:var(--g1);border-color:rgba(27,67,50,.18);background:rgba(255,255,255,.45)}
 .hero .btn-ghost:hover{background:#fff;border-color:rgba(27,67,50,.32)}
-.hero-stats{display:flex;gap:30px;flex-wrap:wrap}
+.hero-stats{display:none}
 .stat-num{font-size:17px;font-weight:700;color:var(--g1)}
 .stat-lbl{font-size:13px;color:var(--muted);margin-top:1px}
-.hero-slide-card{margin-top:18px;display:flex;align-items:center;gap:10px}
+.hero-slide-card{position:absolute;right:26px;bottom:18px;z-index:2;display:flex;align-items:center;gap:8px}
 .slide-dot{width:9px;height:9px;border-radius:50%;border:1px solid rgba(27,67,50,.35);background:rgba(255,255,255,.8);cursor:pointer;transition:all .18s}
 .slide-dot.active{width:24px;border-radius:20px;background:var(--ga);border-color:var(--ga)}
 .slide-nav{width:34px;height:34px;border-radius:50%;border:1px solid rgba(27,67,50,.16);background:rgba(255,255,255,.74);color:var(--g1);font-size:18px;display:inline-flex;align-items:center;justify-content:center;transition:all .18s}
 .slide-nav:hover{background:#fff;border-color:rgba(27,67,50,.3)}
+
+/* AI chat */
+.ai-chat{position:fixed;right:22px;bottom:88px;z-index:130;width:min(380px,calc(100vw - 32px));font-family:'DM Sans',sans-serif}
+.ai-chat-toggle{display:flex;align-items:center;gap:10px;margin-left:auto;border:0;border-radius:999px;background:#10281e;color:#fff;padding:12px 18px;box-shadow:0 18px 40px rgba(16,40,30,.22);font-weight:900}
+.ai-chat-toggle span:first-child{width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#52B788;color:#10281e}
+.ai-chat-panel{background:#fff;border:1px solid rgba(229,231,235,.92);border-radius:14px;box-shadow:0 24px 70px rgba(16,40,30,.24);overflow:hidden}
+.ai-chat-head{display:flex;align-items:center;justify-content:space-between;gap:14px;background:#10281e;color:#fff;padding:15px 16px}
+.ai-chat-title{font-size:15px;font-weight:900;line-height:1.25}
+.ai-chat-sub{font-size:12px;color:rgba(255,255,255,.68);line-height:1.4;margin-top:2px}
+.ai-chat-close{width:30px;height:30px;border:0;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;font-size:18px}
+.ai-chat-messages{height:340px;overflow:auto;padding:16px;background:#F8FCF9;display:flex;flex-direction:column;gap:10px}
+.ai-msg{max-width:88%;border-radius:13px;padding:10px 12px;font-size:14px;line-height:1.6;white-space:pre-wrap}
+.ai-msg.bot{align-self:flex-start;background:#fff;border:1px solid #E5E7EB;color:#1f2937}
+.ai-msg.user{align-self:flex-end;background:#1B4332;color:#fff}
+.ai-chat-suggestions{display:flex;flex-wrap:wrap;gap:7px;padding:0 14px 12px;background:#F8FCF9}
+.ai-chat-suggestions button{border:1px solid #BBF7D0;background:#ECFDF5;color:#047857;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800}
+.ai-chat-form{display:flex;gap:8px;padding:12px;border-top:1px solid #E5E7EB;background:#fff}
+.ai-chat-input{flex:1;border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;font-size:14px;min-width:0}
+.ai-chat-input:focus{outline:none;border-color:#52B788;box-shadow:0 0 0 4px rgba(82,183,136,.12)}
+.ai-chat-send{border:0;border-radius:10px;background:#52B788;color:#fff;font-weight:900;padding:0 14px;min-width:56px}
+.ai-chat-send:disabled{opacity:.55;cursor:not-allowed}
+.ai-chat-note{font-size:11px;color:#6B7280;padding:0 14px 12px;background:#fff;line-height:1.45}
 
 /* Footer */
 .site-cta{background:linear-gradient(135deg,var(--g1),var(--g3));color:#fff;padding:34px 0}
 .site-cta-inner{display:flex;align-items:center;justify-content:space-between;gap:28px}
 .site-cta h2{font-size:clamp(25px,4vw,38px);margin-bottom:6px;color:#fff}
 .site-cta p{color:rgba(255,255,255,.82);font-size:16px;max-width:650px;line-height:1.7}
-.footer{background:#10281e;color:rgba(255,255,255,.78);padding:54px 0 0;border-top:1px solid rgba(255,255,255,.08)}
-.footer-grid{display:grid;grid-template-columns:1.35fr .78fr .9fr 1fr;gap:42px;align-items:start}
-.footer-desc{font-size:14px;line-height:1.8;margin:16px 0 20px;max-width:370px;color:rgba(255,255,255,.72)}
+.footer{background:#10281e;color:rgba(255,255,255,.78);padding:58px 0 26px;border-top:1px solid rgba(255,255,255,.08)}
+.footer-grid{display:grid;grid-template-columns:1.3fr .72fr .82fr 1fr .78fr;gap:38px;align-items:start}
+.footer-desc{font-size:14px;line-height:1.8;margin:18px 0 24px;max-width:370px;color:rgba(255,255,255,.72)}
 .footer-social{display:flex;gap:10px;flex-wrap:wrap}
 .footer-social a,.footer-social span{width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);color:#fff;text-decoration:none;font-size:15px;transition:all .18s}
 .footer-social a:hover{background:var(--ga);transform:translateY(-1px)}
@@ -282,7 +576,11 @@ input,textarea,select{font-family:inherit}
 .footer-contact{display:grid;gap:10px}
 .footer-contact-row{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:rgba(255,255,255,.76)}
 .footer-contact-ico{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:rgba(82,183,136,.14);color:var(--ga);flex-shrink:0}
-.footer-bot{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-top:44px;padding:18px 0;border-top:1px solid rgba(255,255,255,.1);font-size:13px;color:rgba(255,255,255,.58)}
+.footer-lineoa{display:flex;flex-direction:column;align-items:flex-start}
+.footer-lineqr{width:118px;height:118px;border-radius:10px;background:#fff;padding:8px;display:block;margin:2px 0 10px;box-shadow:0 8px 22px rgba(0,0,0,.16)}
+.footer-lineid{font-size:15px;font-weight:800;color:#fff;line-height:1.2}
+.footer-linesub{font-size:12px;color:rgba(255,255,255,.62);margin-top:4px;line-height:1.45}
+.footer-bot{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-top:26px;padding:20px 0 0;border-top:1px solid rgba(255,255,255,.1);font-size:13px;color:rgba(255,255,255,.58)}
 .footer-legal{display:flex;gap:18px;flex-wrap:wrap}
 .footer-legal button{background:none;border:none;color:rgba(255,255,255,.58);font-size:13px;padding:0}
 .footer-legal button:hover{color:#fff}
@@ -291,8 +589,10 @@ input,textarea,select{font-family:inherit}
 .fade-in{animation:fadeUp .5s ease forwards}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
 
-@media(max-width:900px){.grid-3{grid-template-columns:1fr 1fr}.experts-grid,.articles-grid{grid-template-columns:1fr 1fr}.directory-tools{flex-direction:column}.filters{justify-content:flex-start}.search-wrap{width:100%;flex:auto}.auth-page{grid-template-columns:1fr}.auth-hero{display:none}.nav-links .nav-btn:not(.always){display:none}.admin-wrap{grid-template-columns:1fr}.admin-side{position:relative;width:auto;overflow:visible;display:flex;flex-wrap:wrap;gap:8px;padding:18px}.admin-brand{width:100%;margin-bottom:4px;padding-bottom:14px}.side-section{display:none}.side-item{width:auto;margin-bottom:0}.admin-main{padding:24px 18px}.adm-stats{grid-template-columns:1fr 1fr}.footer-grid{grid-template-columns:1fr 1fr}.site-cta-inner{align-items:flex-start;flex-direction:column}.hero{min-height:560px}.hero::before{background:rgba(250,250,248,.9)}}
-@media(max-width:600px){.grid-3,.grid-2,.experts-grid,.articles-grid{grid-template-columns:1fr}.auth-panel{padding:24px 18px}.auth-card{padding:24px 20px}.hero{min-height:620px;align-items:flex-start;padding-top:44px}.hero-stats{flex-wrap:wrap;gap:20px}.hero-ctas .btn,.hero-ctas .btn-ghost{width:100%;text-align:center}.adm-toolbar{align-items:flex-start;flex-direction:column}.adm-stats,.form-row{grid-template-columns:1fr}.modal{padding:20px}.footer-grid{grid-template-columns:1fr}.footer-bot{align-items:flex-start;flex-direction:column}.site-cta .btn-accent{width:100%}.back-top{bottom:16px;right:16px}}
+@media(max-width:900px){.grid-3{grid-template-columns:1fr 1fr}.experts-grid,.articles-grid,.solution-grid,.download-grid{grid-template-columns:1fr 1fr}.directory-tools,.download-tools{flex-direction:column}.filters{justify-content:flex-start}.search-wrap{width:100%;flex:auto}.auth-page{grid-template-columns:1fr}.auth-hero{display:none}.nav-links .nav-btn:not(.always){display:none}.admin-wrap{grid-template-columns:1fr}.admin-side{position:relative;width:auto;overflow:visible;display:flex;flex-wrap:wrap;gap:8px;padding:18px}.admin-brand{width:100%;margin-bottom:4px;padding-bottom:14px}.side-section{display:none}.side-item{width:auto;margin-bottom:0}.admin-main{padding:24px 18px}.adm-stats{grid-template-columns:1fr 1fr}.footer-grid{grid-template-columns:1fr 1fr}.site-cta-inner{align-items:flex-start;flex-direction:column}.hero-frame{aspect-ratio:auto;min-height:300px}.hero-frame::before{background:rgba(250,250,248,.92)}.survey-sections{grid-template-columns:1fr 1fr}.platform-flow-head,.platform-flow-cta{align-items:flex-start;flex-direction:column}.platform-flow-badges{justify-content:flex-start}.platform-flow-steps{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){.article-shell{grid-template-columns:1fr}.article-side{position:static;grid-template-columns:1fr 1fr}.article-cta-list{grid-template-columns:1fr}}
+@media(max-width:760px){.survey-grid-row{grid-template-columns:1fr;gap:9px}.survey-radio-grid.compact{grid-template-columns:repeat(2,minmax(0,1fr))}.survey-grid-group h3{font-size:15px}.survey-grid-question{font-size:13px}.survey-part-list{grid-template-columns:1fr}}
+@media(max-width:600px){.grid-3,.grid-2,.experts-grid,.articles-grid,.solution-grid,.download-grid{grid-template-columns:1fr}.auth-panel{padding:24px 18px}.auth-card{padding:24px 20px}.hero{padding:16px 0 0}.hero + .section{padding-top:42px}.hero .container{padding:0 12px}.hero-frame{min-height:360px;align-items:flex-start}.hero-copy{padding:20px 18px 72px}.hero-ctas .btn,.hero-ctas .btn-ghost{width:100%;text-align:center}.hero-slide-card{right:16px;bottom:14px}.adm-toolbar{align-items:flex-start;flex-direction:column}.adm-stats,.form-row{grid-template-columns:1fr}.modal{padding:20px}.footer-grid{grid-template-columns:1fr}.footer-partners-head{align-items:flex-start;flex-direction:column}.footer-partners-note{text-align:left}.footer-partner-list{justify-content:flex-start;gap:4px;padding:16px}.footer-partner-card{padding:4px 5px}.footer-bot{align-items:flex-start;flex-direction:column}.site-cta .btn-accent{width:100%}.back-top{bottom:16px;right:16px}.ai-chat{right:12px;bottom:70px;width:calc(100vw - 24px)}.ai-chat-messages{height:310px}.article-page{padding:22px 0 58px}.detail-wrap{padding:0 16px}.article-hero{padding:30px 22px;border-radius:14px}.detail-img{width:48px;height:48px;font-size:26px}.article-card{padding:26px 20px}.article-intro{font-size:17px}.detail-body{font-size:16px}.article-side{grid-template-columns:1fr}.article-quote{text-align:left;padding:22px}.survey-page{padding:20px 0 48px}.survey-shell{padding:0 12px}.survey-hero-inner{padding:24px 20px}.survey-sections,.survey-form-grid,.survey-check-grid{grid-template-columns:1fr}.survey-frame-head{align-items:flex-start;flex-direction:column}.survey-form{padding:16px}.survey-radio-grid{grid-template-columns:repeat(5,1fr);gap:6px}.survey-radio{padding:9px 4px}.survey-frame{height:8200px}.platform-flow{padding:26px 20px}.platform-flow-steps{grid-template-columns:1fr}.platform-flow-cta .btn-accent{width:100%}.doc-actions{align-items:flex-start;flex-direction:column}.doc-actions .btn-accent{width:100%}}
 `;
 const CATS = ["Net Zero","ESG","Eco-Factory","GHG","Green Industry","Policy","คุณภาพอากาศ","คุณภาพน้ำ","กากของเสีย","วิศวกรรมสิ่งแวดล้อม","กฎหมายสิ่งแวดล้อม","IoT & Sensor"];
 const EXP_AREAS = ["ESG","Net Zero","CFO/CFP","Eco-Factory","ISO 14001","GRI","Energy","Waste Management"];
@@ -301,14 +601,19 @@ const T = {
   th:{
     home:"หน้าแรก",blog:"ความรู้",experts:"ผู้เชี่ยวชาญ",about:"เกี่ยวกับ",
     menu_eco:"Eco Factory",menu_fcheck:"ตรวจประเมิน",menu_env:"สิ่งแวดล้อม",menu_carbon:"Carbon Management",menu_awards:"Amata Best Waste Management Awards",menu_knowledge:"ความรู้",
-    hero_tag:"Sustainability Expert-on-Demand Platform",
-    hero_sub:"ศูนย์กลางผู้เชี่ยวชาญด้าน Sustainability และระบบประเมินมาตรฐานสิ่งแวดล้อมแบบครบวงจร สำหรับองค์กรที่เตรียมพร้อมสู่ Net Zero, ESG และกฎระเบียบใหม่ด้านสภาพภูมิอากาศ",
+    hero_tag:"Environmental Data Platform for Factories",
+    hero_sub:"แพลตฟอร์มสิ่งแวดล้อมสำหรับโรงงาน ครอบคลุม Eco Factory, CFO, CFP, Carbon Footprint และระบบ IoT Monitoring ผ่าน MQTT เพื่อเปลี่ยนข้อมูลหน้างานเป็น Dashboard และรายงานตามมาตรฐาน TGO / ISO",
     get_started:"เริ่มต้นใช้งาน",find_experts:"ค้นหาผู้เชี่ยวชาญ",
-    feat_title:"โซลูชันครบวงจรด้านความยั่งยืน",
-    feat_sub:"VERDIX ผสาน ผู้เชี่ยวชาญตัวจริง + ระบบประเมิน + AI + Digital Workflow เพื่อให้ทุกองค์กรเริ่มต้น วัดผล ปรับปรุง และเดินหน้าแผนความยั่งยืนได้อย่างถูกต้อง แม่นยำ และคุ้มค่า",
-    f1t:"Expert-on-Demand Marketplace",f1d:"ระบบ Matching ผู้เชี่ยวชาญด้านความยั่งยืน จ้างงานแบบ Task-based, Project-based หรือ Monthly Support ครอบคลุม Carbon Footprint, Eco-Factory, ESG, Net Zero Roadmap และกฎหมายสิ่งแวดล้อม",
-    f2t:"Sustainability Assessment Engine",f2d:"ระบบประเมิน Eco-Factory และ Eco-Efficiency ออนไลน์ รวม Digital Checklist, Gap Analysis อัตโนมัติ, Action Plan และ Expert Review ในที่เดียว พร้อมขึ้นทะเบียน Green Industry ได้ทันที",
-    f3t:"Automated Reporting System",f3d:"ออกรายงานตามมาตรฐาน TGO, ISO 14064/14067, GRI, Eco-Factory, GI อัตโนมัติ ลดเวลาจากหลายสัปดาห์เหลือเพียงไม่กี่นาที รองรับ Multi-site และ Expert Review Workflow",
+    feat_title:"แพลตฟอร์มข้อมูลสิ่งแวดล้อมสำหรับโรงงาน",
+    feat_sub:"VERDIX ผสานผู้เชี่ยวชาญตัวจริง ระบบประเมิน Eco Factory เครื่องมือ CFO/CFP และข้อมูล IoT จากหน้างาน เพื่อให้โรงงานวัดผล ปรับปรุง และออกรายงานด้านสิ่งแวดล้อมได้อย่างเป็นระบบ",
+    f1t:"Eco Factory & Green Industry Readiness",f1d:"ระบบประเมิน Eco Factory และ Green Industry ออนไลน์ รวม Digital Checklist, Gap Analysis, Action Plan และ Expert Review เพื่อเตรียมโรงงานก่อนยื่นรับรอง",
+    f2t:"CFO / CFP Carbon Footprint Engine",f2d:"จัดเก็บและคำนวณข้อมูล Carbon Footprint for Organization (CFO) และ Carbon Footprint of Product (CFP) ตามแนวทาง TGO, ISO 14064 และ ISO 14067",
+    f3t:"IoT & MQTT Environmental Monitoring",f3d:"เชื่อมต่อ Sensor, PLC และ Gateway ผ่าน MQTT, Modbus TCP, OPC-UA หรือ REST API เพื่อติดตามพลังงาน น้ำ อากาศ ของเสีย และ GHG Activity Data แบบ Real-time",
+    f4t:"Automated ESG / TGO / ISO Reporting",f4d:"ออกรายงานตามมาตรฐาน TGO, ISO 14064/14067, GRI, Eco Factory และ Green Industry ลดเวลารวบรวมข้อมูล พร้อมรองรับ Multi-site และ Expert Review Workflow",
+    flow_title:"จาก Sensor หน้างาน สู่รายงาน Carbon และ Eco Factory",
+    flow_sub:"VERDIX เชื่อมข้อมูลจริงจากโรงงานเข้ากับระบบประเมินและรายงาน เพื่อให้ทีม EHS, Energy และ Sustainability เห็นสถานะเดียวกันแบบ Real-time",
+    flow_cta:"เริ่มจากระบบที่มีอยู่แล้วในโรงงานได้ เช่น PLC, Meter, Air Sensor, Waste Scale หรือไฟล์ Excel แล้วค่อยต่อยอดสู่ Dashboard และ Automated Reporting",
+    flow_button:"ปรึกษาการเชื่อมต่อ IoT",
     blog_title:"บทความและความรู้",blog_sub:"ติดตามข่าวสารด้านสิ่งแวดล้อม ESG และ Net Zero จากผู้เชี่ยวชาญของเรา",
     read_more:"อ่านเพิ่มเติม →",view_all:"ดูทั้งหมด",
     exp_title:"เครือข่ายผู้เชี่ยวชาญ",exp_sub:"ผู้เชี่ยวชาญด้านความยั่งยืนที่ผ่านการรับรองและคัดสรรแล้ว",
@@ -344,14 +649,19 @@ const T = {
   en:{
     home:"Home",blog:"Knowledge",experts:"Experts",about:"About",
     menu_eco:"Eco Factory",menu_fcheck:"Factory Check",menu_env:"Environment",menu_carbon:"Carbon Management",menu_awards:"Amata Best Waste Management Awards",menu_knowledge:"Knowledge",
-    hero_tag:"Sustainability Expert-on-Demand Platform",
-    hero_sub:"The all-in-one hub for real sustainability experts and digital assessment systems — built for organizations preparing for Net Zero, ESG, and emerging climate regulations.",
+    hero_tag:"Environmental Data Platform for Factories",
+    hero_sub:"A factory environmental platform covering Eco Factory, CFO, CFP, Carbon Footprint, and IoT monitoring via MQTT — turning site data into dashboards and TGO / ISO-ready reports.",
     get_started:"Get Started",find_experts:"Find Experts",
-    feat_title:"End-to-End Sustainability Solutions",
-    feat_sub:"VERDIX combines real experts + assessment systems + AI + digital workflows — so every organization can start, measure, improve, and advance their sustainability plan accurately and cost-effectively.",
-    f1t:"Expert-on-Demand Marketplace",f1d:"Match with certified sustainability experts for Task-based, Project-based, or Monthly Support. Covering Carbon Footprint, Eco-Factory, ESG, Net Zero Roadmap, and Environmental Law.",
-    f2t:"Sustainability Assessment Engine",f2d:"Online Eco-Factory & Eco-Efficiency evaluation. Combines Digital Checklist, automated Gap Analysis, Action Plans, and Expert Review in one place — ready for Green Industry registration.",
-    f3t:"Automated Reporting System",f3d:"Auto-generate reports aligned with TGO, ISO 14064/14067, GRI, Eco-Factory, and GI. Reduce reporting from weeks to minutes, with Multi-site Dashboard and Expert Review Workflow.",
+    feat_title:"Environmental Data Platform for Industrial Sites",
+    feat_sub:"VERDIX combines expert support, Eco Factory assessment, CFO/CFP tools, and field IoT data so factories can measure, improve, and report environmental performance with confidence.",
+    f1t:"Eco Factory & Green Industry Readiness",f1d:"Online Eco Factory and Green Industry readiness assessment with Digital Checklists, Gap Analysis, Action Plans, and Expert Review before certification.",
+    f2t:"CFO / CFP Carbon Footprint Engine",f2d:"Collect and calculate Carbon Footprint for Organization (CFO) and Carbon Footprint of Product (CFP) data aligned with TGO, ISO 14064, and ISO 14067.",
+    f3t:"IoT & MQTT Environmental Monitoring",f3d:"Connect sensors, PLCs, and gateways via MQTT, Modbus TCP, OPC-UA, or REST API to monitor energy, water, air, waste, and GHG activity data in real time.",
+    f4t:"Automated ESG / TGO / ISO Reporting",f4d:"Generate reports aligned with TGO, ISO 14064/14067, GRI, Eco Factory, and Green Industry with Multi-site Dashboard and Expert Review Workflow.",
+    flow_title:"From Factory Sensors to Carbon and Eco Factory Reports",
+    flow_sub:"VERDIX connects real site data with assessment and reporting workflows so EHS, Energy, and Sustainability teams work from one real-time source of truth.",
+    flow_cta:"Start with existing factory systems such as PLCs, meters, air sensors, waste scales, or Excel files, then scale into dashboards and automated reporting.",
+    flow_button:"Discuss IoT Integration",
     blog_title:"Articles & Insights",blog_sub:"Stay updated on ESG, Net Zero, and sustainability from our expert contributors.",
     read_more:"Read More →",view_all:"View All",
     exp_title:"Expert Network",exp_sub:"A certified and curated network of sustainability specialists",
@@ -387,31 +697,241 @@ const T = {
 };
 
 const INIT_ARTICLES = [
-  {id:1,title_th:"Thailand Net Zero 2050: เส้นทางสู่ความเป็นกลางทางคาร์บอน",title_en:"Thailand Net Zero 2050: The Road to Carbon Neutrality",excerpt_th:"ประเทศไทยตั้งเป้า Net Zero ภายในปี 2050 พร้อมแผน NDC 3.0 ที่ชัดเจนและมาตรการลดก๊าซเรือนกระจกในทุกภาคส่วน",excerpt_en:"Thailand sets ambitious Net Zero targets by 2050 with a clear NDC 3.0 roadmap and emission reduction measures.",category:"Net Zero",date:"2025-01-10",author:"Dr. Nathawee P.",image:"🌿"},
-  {id:2,title_th:"ESG คืออะไร? ทำไมทุกองค์กรต้องรู้",title_en:"What is ESG? Why Every Organization Must Know",excerpt_th:"ESG กลายเป็นมาตรฐานประเมินธุรกิจระดับโลก นักลงทุนสถาบันใช้เป็นเกณฑ์หลักในการตัดสินใจลงทุน",excerpt_en:"ESG has become the global standard for business evaluation and a key criterion for institutional investment decisions.",category:"ESG",date:"2024-12-20",author:"Assoc.Prof. Dr. Kowit S.",image:"📊"},
-  {id:3,title_th:"Eco-Factory: มาตรฐานโรงงานสีเขียวของไทย",title_en:"Eco-Factory: Thailand's Green Factory Standard",excerpt_th:"มาตรฐาน Eco-Factory มี 14 ประเภทการตรวจประเมิน ครอบคลุมพลังงาน น้ำ ขยะ อากาศ และชุมชน",excerpt_en:"Eco-Factory certification covers 14 assessment categories: energy, water, waste, air quality, and community impact.",category:"Eco-Factory",date:"2024-11-28",author:"VerdiX Team",image:"🏭"},
+  {id:1,title_th:"Thailand Net Zero 2050: เส้นทางสู่ความเป็นกลางทางคาร์บอนของประเทศไทย",title_en:"Thailand Net Zero 2050: The Road to Carbon Neutrality",excerpt_th:"ประเทศไทยกำลังก้าวเข้าสู่ยุคใหม่ของเศรษฐกิจยั่งยืน เป้าหมาย Net Zero 2050 จึงไม่ใช่แค่นโยบายสิ่งแวดล้อม แต่เป็นมาตรฐานใหม่ของการดำเนินธุรกิจ",excerpt_en:"Thailand is entering a new sustainability economy where Net Zero 2050 becomes a new operating standard for business.",category:"Net Zero",date:"2025-01-10",author:"VerdiX Editorial",image:"/thainetzero.png"},
+  {id:2,title_th:"ESG คืออะไร? ทำไมทุกองค์กรต้องรู้",title_en:"What is ESG? Why Every Organization Must Know",excerpt_th:"ESG กลายเป็นมาตรฐานประเมินธุรกิจระดับโลก นักลงทุน สถาบัน ลูกค้า และคู่ค้าระดับสากลใช้เป็นเกณฑ์สำคัญในการประเมินองค์กร",excerpt_en:"ESG has become the global standard for business evaluation and a key criterion for institutional investment decisions.",category:"ESG",date:"2024-12-20",author:"VerdiX Editorial",image:"/esg-what-is.png"},
+  {id:3,title_th:"Eco-Factory: มาตรฐานโรงงานสีเขียวของไทย",title_en:"Eco-Factory: Thailand's Green Factory Standard",excerpt_th:"มาตรฐาน Eco-Factory มี 14 ประเภทการตรวจประเมิน ครอบคลุมพลังงาน น้ำ ขยะ อากาศ และชุมชน",excerpt_en:"Eco-Factory certification covers 14 assessment categories: energy, water, waste, air quality, and community impact.",category:"Eco-Factory",date:"2024-11-28",author:"VerdiX Team",image:"/eco-factory-standard.png"},
   {id:4,title_th:"Carbon Footprint ขององค์กร: วิธีคำนวณและลด",title_en:"Corporate Carbon Footprint: How to Calculate and Reduce",excerpt_th:"คำนวณ CFO/CFP ตามมาตรฐาน ISO 14064 และ TGO พร้อมแนวทางลด Scope 1, 2, 3",excerpt_en:"Calculate CFO/CFP following ISO 14064 and TGO standards with practical Scope 1, 2, 3 reduction guidance.",category:"GHG",date:"2024-11-15",author:"VerdiX Expert",image:"🌡️"},
-  {id:5,title_th:"Green Industry Level 1–5: ก้าวสู่อุตสาหกรรมสีเขียว",title_en:"Green Industry Levels 1–5: Steps to Green Manufacturing",excerpt_th:"โครงการอุตสาหกรรมสีเขียวมี 5 ระดับ จากความมุ่งมั่นสู่วัฒนธรรมสีเขียวที่ยั่งยืน",excerpt_en:"The Green Industry program has 5 levels, progressing from commitment to building a sustainable green culture.",category:"Green Industry",date:"2024-10-30",author:"Dr. Nathawee P.",image:"🌱"},
+  {id:5,title_th:"Green Industry Level 1–5: ก้าวสู่อุตสาหกรรมสีเขียว",title_en:"Green Industry Levels 1–5: Steps to Green Manufacturing",excerpt_th:"โครงการอุตสาหกรรมสีเขียวมี 5 ระดับ จากความมุ่งมั่นสู่วัฒนธรรมสีเขียวที่ยั่งยืน",excerpt_en:"The Green Industry program has 5 levels, progressing from commitment to building a sustainable green culture.",category:"Green Industry",date:"2024-10-30",author:"VerdiX Editorial",image:"🌱"},
   {id:6,title_th:"Carbon Tax ในไทย: ผลกระทบต่อภาคอุตสาหกรรม",title_en:"Carbon Tax in Thailand: Impact on Industry",excerpt_th:"กฎหมาย Climate Change Act กำลังจะมาพร้อมภาษีคาร์บอน ธุรกิจต้องเตรียมพร้อมตั้งแต่วันนี้",excerpt_en:"Thailand's Climate Change Act brings carbon taxation — businesses must prepare starting today.",category:"Policy",date:"2024-10-10",author:"VerdiX Team",image:"⚖️"},
-  {id:7,title_th:"PM2.5 ในโรงงานอุตสาหกรรม: มาตรฐานและการควบคุม",title_en:"PM2.5 in Industrial Facilities: Standards and Control",excerpt_th:"ค่ามาตรฐาน PM2.5 ในบรรยากาศทั่วไปและในสถานประกอบการ พร้อมวิธีควบคุมด้วยระบบกรองอากาศ",excerpt_en:"PM2.5 ambient and workplace standards with dust control systems, filters, and monitoring methods.",category:"คุณภาพอากาศ",date:"2024-12-05",author:"Dr. Apinya B.",image:"🌬️"},
+  {id:7,title_th:"PM2.5 ในโรงงานอุตสาหกรรม: มาตรฐานและการควบคุม",title_en:"PM2.5 in Industrial Facilities: Standards and Control",excerpt_th:"ค่ามาตรฐาน PM2.5 ในบรรยากาศทั่วไปและในสถานประกอบการ พร้อมวิธีควบคุมด้วยระบบกรองอากาศ",excerpt_en:"PM2.5 ambient and workplace standards with dust control systems, filters, and monitoring methods.",category:"คุณภาพอากาศ",date:"2024-12-05",author:"VerdiX Editorial",image:"🌬️"},
   {id:8,title_th:"การตรวจวัดคุณภาพอากาศแบบ Real-time ด้วย IoT Sensor",title_en:"Real-time Air Quality Monitoring with IoT Sensors",excerpt_th:"ระบบเซ็นเซอร์วัดคุณภาพอากาศ (CO, SO₂, NOx, VOC, PM) แบบ Real-time ผ่าน MQTT สำหรับโรงงาน",excerpt_en:"IoT sensor systems for CO, SO₂, NOx, VOC, PM real-time monitoring via MQTT for industrial facilities.",category:"IoT & Sensor",date:"2025-01-05",author:"VerdiX Tech",image:"📡"},
-  {id:9,title_th:"BOD COD SS: ค่ามาตรฐานน้ำทิ้งโรงงานอุตสาหกรรม",title_en:"BOD COD SS: Industrial Wastewater Effluent Standards",excerpt_th:"ค่ามาตรฐานน้ำทิ้งตามประกาศกรมโรงงานอุตสาหกรรม พร้อมวิธีตรวจวัดและระบบบำบัดที่เหมาะสม",excerpt_en:"Industrial effluent standards per DIW regulations with measurement methods and appropriate treatment systems.",category:"คุณภาพน้ำ",date:"2024-12-10",author:"Assoc.Prof. Dr. Kowit S.",image:"💧"},
+  {id:9,title_th:"BOD COD SS: ค่ามาตรฐานน้ำทิ้งโรงงานอุตสาหกรรม",title_en:"BOD COD SS: Industrial Wastewater Effluent Standards",excerpt_th:"ค่ามาตรฐานน้ำทิ้งตามประกาศกรมโรงงานอุตสาหกรรม พร้อมวิธีตรวจวัดและระบบบำบัดที่เหมาะสม",excerpt_en:"Industrial effluent standards per DIW regulations with measurement methods and appropriate treatment systems.",category:"คุณภาพน้ำ",date:"2024-12-10",author:"VerdiX Editorial",image:"💧"},
   {id:10,title_th:"ระบบบำบัดน้ำเสีย: เลือกเทคโนโลยีให้เหมาะกับโรงงาน",title_en:"Wastewater Treatment Systems: Choosing the Right Technology",excerpt_th:"เปรียบเทียบระบบบำบัดน้ำเสีย (Activated Sludge, MBR, SBR, MBBR) ตามประเภทอุตสาหกรรมและงบประมาณ",excerpt_en:"Comparing wastewater treatment systems (Activated Sludge, MBR, SBR, MBBR) by industry type and budget.",category:"วิศวกรรมสิ่งแวดล้อม",date:"2024-11-20",author:"VerdiX Expert",image:"🔬"},
   {id:11,title_th:"กากของเสียอันตราย: ระบบ Manifest และกฎหมาย",title_en:"Hazardous Waste: Manifest System and Legal Requirements",excerpt_th:"ระบบ e-Manifest กรมโรงงานอุตสาหกรรม ประเภทกากของเสีย บัญชีรหัสกาก และหน้าที่ตามกฎหมาย",excerpt_en:"DIW e-Manifest system, waste classification codes, and legal obligations for hazardous waste generators.",category:"กากของเสีย",date:"2024-11-08",author:"VerdiX Team",image:"☣️"},
-  {id:12,title_th:"Zero Waste to Landfill: ทำอย่างไรให้สำเร็จ",title_en:"Zero Waste to Landfill: How to Achieve It",excerpt_th:"แนวทางปฏิบัติที่แท้จริงสำหรับโรงงานที่ต้องการบรรลุเป้าหมาย Zero Waste to Landfill",excerpt_en:"Practical guidelines for factories targeting Zero Waste to Landfill certification.",category:"กากของเสีย",date:"2024-10-25",author:"Dr. Nathawee P.",image:"♻️"},
+  {id:12,title_th:"Zero Waste to Landfill: ทำอย่างไรให้สำเร็จ",title_en:"Zero Waste to Landfill: How to Achieve It",excerpt_th:"แนวทางปฏิบัติที่แท้จริงสำหรับโรงงานที่ต้องการบรรลุเป้าหมาย Zero Waste to Landfill",excerpt_en:"Practical guidelines for factories targeting Zero Waste to Landfill certification.",category:"กากของเสีย",date:"2024-10-25",author:"VerdiX Editorial",image:"♻️"},
   {id:13,title_th:"กฎหมายสิ่งแวดล้อมไทย: บทบัญญัติสำคัญที่โรงงานต้องรู้",title_en:"Thai Environmental Law: Key Provisions Every Factory Must Know",excerpt_th:"สรุปกฎหมายสำคัญ: พรบ.โรงงาน พรบ.ส่งเสริมคุณภาพสิ่งแวดล้อม พรบ.วัตถุอันตราย และกฎหมายน้ำ",excerpt_en:"Summary of key laws: Factory Act, Environmental Quality Promotion Act, Hazardous Substances Act, and Water Law.",category:"กฎหมายสิ่งแวดล้อม",date:"2024-10-15",author:"Legal Expert",image:"📜"},
-  {id:14,title_th:"LCA (Life Cycle Assessment) สำหรับผลิตภัณฑ์อุตสาหกรรม",title_en:"LCA for Industrial Products: A Practical Guide",excerpt_th:"การประเมินวัฏจักรชีวิตของผลิตภัณฑ์ตามมาตรฐาน ISO 14040/14044 เพื่อลดผลกระทบสิ่งแวดล้อม",excerpt_en:"Product lifecycle assessment per ISO 14040/14044 standards to reduce environmental impact.",category:"วิศวกรรมสิ่งแวดล้อม",date:"2024-10-01",author:"Assoc.Prof. Dr. Kowit S.",image:"🔄"},
+  {id:14,title_th:"LCA (Life Cycle Assessment) สำหรับผลิตภัณฑ์อุตสาหกรรม",title_en:"LCA for Industrial Products: A Practical Guide",excerpt_th:"การประเมินวัฏจักรชีวิตของผลิตภัณฑ์ตามมาตรฐาน ISO 14040/14044 เพื่อลดผลกระทบสิ่งแวดล้อม",excerpt_en:"Product lifecycle assessment per ISO 14040/14044 standards to reduce environmental impact.",category:"วิศวกรรมสิ่งแวดล้อม",date:"2024-10-01",author:"VerdiX Editorial",image:"🔄"},
   {id:15,title_th:"MQTT Protocol สำหรับงาน Industrial IoT Environmental Monitoring",title_en:"MQTT Protocol for Industrial IoT Environmental Monitoring",excerpt_th:"ใช้ MQTT ส่งข้อมูลเซ็นเซอร์สิ่งแวดล้อม (อากาศ น้ำ กาก) จาก PLC/IoT ขึ้น Cloud Platform แบบ Real-time",excerpt_en:"Using MQTT to transmit environmental sensor data (air, water, waste) from PLC/IoT to Cloud Platform in real-time.",category:"IoT & Sensor",date:"2025-01-15",author:"VerdiX Tech",image:"🔌"},
 ];
 
-const INIT_EXPERTS = [
-  {id:1,name:"Assoc.Prof. Dr. Kowit Suwannahong",name_th:"รศ.ดร. โกวิท สุวรรณหงษ์",title_th:"คณบดี คณะสาธารณสุขศาสตร์ ม.บูรพา",title_en:"Dean, Faculty of Public Health, Burapha University",expertise:["Eco-Factory","ESG","GRI"],location:"Chonburi",rating:4.9,reviews:47,manday:15000,avatar:"👨‍🏫"},
-  {id:2,name:"Dr. Nathawee Pong-ajarn",name_th:"ดร. ณัฐวี พงษ์อาจารย์",title_th:"ผู้เชี่ยวชาญพลังงานและ Carbon Footprint",title_en:"Energy & Carbon Footprint Expert",expertise:["CFO/CFP","Net Zero","Energy"],location:"Bangkok",rating:5.0,reviews:32,manday:18000,avatar:"👩‍💼"},
-  {id:3,name:"Khun Somchai Treerat",name_th:"คุณสมชาย ตรีรัตน์",title_th:"ผู้เชี่ยวชาญ ISO 14001 และการจัดการขยะ",title_en:"ISO 14001 & Waste Management Specialist",expertise:["ISO 14001","Waste Management","Eco-Factory"],location:"Rayong",rating:4.7,reviews:28,manday:12000,avatar:"👨‍🔬"},
-  {id:4,name:"Dr. Wanida Srisatit",name_th:"ดร. วนิดา ศรีสาทิตย์",title_th:"ผู้เชี่ยวชาญ GRI และการรายงาน ESG",title_en:"GRI & ESG Reporting Specialist",expertise:["GRI","ESG","Net Zero"],location:"Bangkok",rating:4.8,reviews:41,manday:20000,avatar:"👩‍💻"},
-  {id:5,name:"Khun Prasert Khamla",name_th:"คุณประเสริฐ ขำหล้า",title_th:"วิศวกรพลังงานและผู้ตรวจสอบ ISO 50001",title_en:"Energy Engineer & ISO 50001 Auditor",expertise:["Energy","ISO 14001","CFO/CFP"],location:"Chiang Mai",rating:4.6,reviews:19,manday:10000,avatar:"👷"},
-  {id:6,name:"Dr. Apinya Buranasiri",name_th:"ดร. อาพิณยา บูรณศิริ",title_th:"ผู้เชี่ยวชาญด้านอากาศและความปลอดภัย",title_en:"Air Quality & Industrial Safety Expert",expertise:["ESG","Waste Management","ISO 14001"],location:"Samut Prakan",rating:4.5,reviews:15,manday:11000,avatar:"👩‍🔬"},
+const INIT_DOCUMENTS = [
+  {id:1,title_th:"เกณฑ์ข้อกำหนดมาตรฐานฯ",title_en:"Eco Factory Standard Criteria",description_th:"หมวดเอกสารเกณฑ์ข้อกำหนดมาตรฐาน Eco Factory",description_en:"Eco Factory standard criteria document category.",category:"Eco Factory",file_url:"/documents/eco-factory-criteria-2024.pdf",file_data_url:"",file_name:"eco-factory-criteria-2024.pdf",file_type:"FOLDER",file_size:495447,version:"2024",updated_at:"2026-05-23",downloads:0,active:true},
+  {id:2,title_th:"เอกสารประกอบการขอการรับรองสำหรับมาตรฐาน Eco Factory",title_en:"Eco Factory Certification Documents",description_th:"เอกสารประกอบการยื่นขอรับรองมาตรฐาน Eco Factory",description_en:"Supporting documents for Eco Factory certification.",category:"Eco Factory",file_url:"https://www.ecofactory.fti.or.th/page/view/download",file_data_url:"",file_name:"eco-factory-certification-documents",file_type:"FOLDER",file_size:0,version:"2024",updated_at:"2026-05-23",downloads:0,active:true},
+  {id:3,title_th:"เอกสารประกอบการขอรับรองสำหรับมาตรฐาน Eco Factory for Waste Processor",title_en:"Eco Factory for Waste Processor Documents",description_th:"หมวดเอกสารสำหรับ Waste Processor",description_en:"Supporting document category for Waste Processor.",category:"Eco Factory",file_url:"https://www.ecofactory.fti.or.th/page/view/download",file_data_url:"",file_name:"eco-factory-waste-processor-documents",file_type:"FOLDER",file_size:0,version:"2024",updated_at:"2026-05-23",downloads:0,active:true},
+  {id:4,title_th:"ใบสมัครขอขึ้นทะเบียนรับรองมาตรฐาน-Update 2024.DOCX",title_en:"Eco Factory Registration Application - Update 2024.DOCX",description_th:"แบบฟอร์มใบสมัครสำหรับการขึ้นทะเบียนรับรองมาตรฐาน Eco Factory",description_en:"Application form for Eco Factory certification registration.",category:"Form / Template",file_url:"https://www.ecofactory.fti.or.th/page/view/download",file_data_url:"",file_name:"eco-factory-application-update-2024.docx",file_type:"DOCX",file_size:0,version:"2024",updated_at:"2026-05-23",downloads:0,active:true},
+  {id:5,title_th:"ใบสมัครขอขึ้นทะเบียนรับรองมาตรฐาน-Update 2024.PDF",title_en:"Eco Factory Registration Application - Update 2024.PDF",description_th:"ไฟล์ PDF ใบสมัครขอขึ้นทะเบียนรับรองมาตรฐาน Eco Factory",description_en:"PDF application form for Eco Factory certification registration.",category:"Form / Template",file_url:"/documents/eco-factory-application-update-2024.pdf",file_data_url:"",file_name:"eco-factory-application-update-2024.pdf",file_type:"PDF",file_size:1317677,version:"2024",updated_at:"2026-05-23",downloads:0,active:true},
+  {id:6,title_th:"รายงานการตรวจสอบการเฝ้าระวังตนเอง Self surveillance Audit Report (ฉบับปรับปรุง ครั้งที่ 2)",title_en:"Self Surveillance Audit Report Revision 2",description_th:"แบบรายงานการตรวจสอบการเฝ้าระวังตนเองสำหรับ Eco Factory",description_en:"Self surveillance audit report template for Eco Factory.",category:"Eco Factory",file_url:"https://www.ecofactory.fti.or.th/page/view/download",file_data_url:"",file_name:"self-surveillance-audit-report-rev2.pdf",file_type:"PDF",file_size:0,version:"2",updated_at:"2026-05-23",downloads:0,active:true},
+  {id:7,title_th:"คุณสมบัติผู้ตรวจประเมินโรงงานอุตสาหกรรมเชิงนิเวศ (Eco Factory)",title_en:"Eco Factory Auditor Qualification",description_th:"เอกสารคุณสมบัติผู้ตรวจประเมินโรงงานอุตสาหกรรมเชิงนิเวศ",description_en:"Auditor qualification document for Eco Factory.",category:"Legal / Standard",file_url:"https://www.ecofactory.fti.or.th/page/view/download",file_data_url:"",file_name:"eco-factory-auditor-qualification.pdf",file_type:"PDF",file_size:0,version:"2024",updated_at:"2026-05-23",downloads:0,active:true}
 ];
+
+const DOC_CATEGORIES = ["All","Eco Factory","Carbon Management","IoT & Sensor","ESG / Reporting","Legal / Standard","Form / Template"];
+
+const DOWNLOAD_FOLDER_FILES = {
+  1: [
+    {name_th:"ข้อกำหนดมาตรฐานโรงงานอุตสาหกรรมเชิงนิเวศ (Eco Factory) ฉบับปรับปรุงครั้งที่ 2",name_en:"Eco Factory Standard Criteria Revision 2",file_type:"pdf",file_url:"/documents/eco-factory-criteria-2024.pdf",file_name:"eco-factory-criteria-2024.pdf"},
+    {name_th:"ข้อกำหนดมาตรฐาน Eco Factory for Waste Processor",name_en:"Eco Factory Standard Criteria for Waste Processor",file_type:"pdf",file_url:"https://www.ecofactory.fti.or.th/page/view/download",file_name:"eco-factory-waste-processor.pdf"}
+  ],
+  2: [
+    {name_th:"เอกสารประกอบการขอการรับรองสำหรับมาตรฐาน Eco Factory",name_en:"Supporting Documents for Eco Factory Certification",file_type:"pdf",file_url:"https://www.ecofactory.fti.or.th/page/view/download",file_name:"eco-factory-certification-documents.pdf"}
+  ],
+  3: [
+    {name_th:"เอกสารประกอบการขอรับรองสำหรับมาตรฐาน Eco Factory for Waste Processor",name_en:"Supporting Documents for Eco Factory for Waste Processor",file_type:"pdf",file_url:"https://www.ecofactory.fti.or.th/page/view/download",file_name:"eco-factory-waste-processor-documents.pdf"}
+  ]
+};
+
+function docHref(doc) {
+  return doc.file_data_url || doc.file_url || "#";
+}
+
+function formatDocSize(bytes) {
+  const n = Number(bytes || 0);
+  if (!n) return "-";
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
+}
+
+const FEATURED_ARTICLE_CONTENT = {
+  1: {
+    intro: "ประเทศไทยกำลังก้าวเข้าสู่ยุคใหม่ของการพัฒนาเศรษฐกิจที่ให้ความสำคัญกับ “ความยั่งยืน” มากกว่าที่เคย โดยเป้าหมาย Thailand Net Zero 2050 ไม่ใช่เพียงนโยบายด้านสิ่งแวดล้อม แต่กำลังกลายเป็น “มาตรฐานใหม่” ของการดำเนินธุรกิจในอนาคต",
+    sections: [
+      {
+        title: "เป้าหมาย Thailand Net Zero 2050",
+        paragraphs: [
+          "ภายใต้เป้าหมายดังกล่าว ประเทศไทยตั้งเป้าลดการปล่อยก๊าซเรือนกระจก (GHG Emission) อย่างต่อเนื่อง พร้อมผลักดันสู่การเป็นประเทศที่มีความเป็นกลางทางคาร์บอน (Carbon Neutrality) และ Net Zero Emission ภายในปี 2050-2065 ตามแนวทางสากลและข้อตกลง Paris Agreement"
+        ]
+      },
+      {
+        title: "ทำไมองค์กรต้องเริ่มตั้งแต่วันนี้?",
+        paragraphs: [
+          "ปัจจุบัน หลายองค์กรเริ่มเผชิญแรงกดดันจากทั้งภาครัฐ นักลงทุน ลูกค้า และคู่ค้าระดับสากล ไม่ว่าจะเป็น:"
+        ],
+        list: [
+          "การจัดทำรายงาน ESG",
+          "การประเมิน Carbon Footprint for Organization (CFO)",
+          "Carbon Footprint of Product (CFP)",
+          "มาตรฐาน Green Industry และ Eco-Factory",
+          "มาตรการ CBAM ของสหภาพยุโรป",
+          "การเตรียมความพร้อมต่อกฎหมาย Climate Change Act ของประเทศไทย"
+        ],
+        after: [
+          "องค์กรที่ปรับตัวได้เร็ว จะมีความได้เปรียบทั้งด้านการแข่งขัน ต้นทุนพลังงาน ภาพลักษณ์องค์กร และโอกาสทางธุรกิจใหม่ในอนาคต",
+          "ในขณะเดียวกัน องค์กรที่ยังไม่มีแผนด้าน Net Zero อาจเผชิญความเสี่ยงด้านต้นทุน ภาษีคาร์บอน และข้อกำหนดจาก Supply Chain ระดับโลก"
+        ]
+      },
+      {
+        title: "Net Zero ไม่ใช่เรื่องขององค์กรขนาดใหญ่เท่านั้น",
+        paragraphs: [
+          "หลายคนอาจมองว่า Net Zero เป็นเรื่องไกลตัวหรือเหมาะสำหรับโรงงานขนาดใหญ่เท่านั้น แต่ในความเป็นจริง องค์กรทุกขนาดสามารถเริ่มต้นได้ ตั้งแต่:"
+        ],
+        list: [
+          "การประเมินการใช้พลังงาน",
+          "การลดของเสียและการปล่อยก๊าซเรือนกระจก",
+          "การเพิ่มประสิทธิภาพระบบการผลิต",
+          "การใช้พลังงานทดแทน",
+          "การจัดการข้อมูลด้านสิ่งแวดล้อมแบบดิจิทัล",
+          "การพัฒนาแนวทาง Circular Economy"
+        ],
+        after: [
+          "การเริ่มต้นตั้งแต่วันนี้ ช่วยให้องค์กรสามารถวางแผนการลงทุนและการเปลี่ยนผ่านได้อย่างเหมาะสม ลดต้นทุนในระยะยาว และสร้างความพร้อมก่อนกฎหมายและข้อกำหนดต่าง ๆ จะเข้มงวดมากขึ้น"
+        ]
+      },
+      {
+        title: "VerdiX: แพลตฟอร์มเชื่อมองค์กรสู่ผู้เชี่ยวชาญด้านความยั่งยืน",
+        paragraphs: [
+          "VerdiX ถูกพัฒนาขึ้นเพื่อช่วยให้องค์กรสามารถเข้าถึงการประเมินด้านความยั่งยืนได้ง่ายขึ้น ผ่านระบบ Digital Assessment และเครือข่ายผู้เชี่ยวชาญที่มีประสบการณ์จริงทั่วประเทศ",
+          "แพลตฟอร์มครอบคลุมการประเมินในหลายด้าน เช่น:"
+        ],
+        list: [
+          "Eco-Factory",
+          "Green Industry",
+          "Carbon Footprint (CFO/CFP)",
+          "ESG Readiness",
+          "Net Zero Roadmap",
+          "Energy Efficiency",
+          "Waste & Resource Management"
+        ],
+        after: [
+          "โดยระบบจะช่วยวิเคราะห์สถานะปัจจุบันขององค์กร ระบุช่องว่างที่ต้องพัฒนา (Gap Analysis) พร้อมเสนอแนวทางและ Roadmap ที่เหมาะสมกับแต่ละองค์กร"
+        ]
+      },
+      {
+        title: "ขับเคลื่อนองค์กรด้วยข้อมูลและผู้เชี่ยวชาญจริง",
+        paragraphs: [
+          "หนึ่งในจุดเด่นของ VerdiX คือการผสานเทคโนโลยีดิจิทัลเข้ากับเครือข่ายผู้เชี่ยวชาญกว่า 120 คนทั่วประเทศไทย เพื่อช่วยให้องค์กรได้รับคำแนะนำที่สามารถนำไปปฏิบัติได้จริง",
+          "ไม่ว่าจะเป็น:"
+        ],
+        list: [
+          "โรงงานอุตสาหกรรม",
+          "ธุรกิจอาหารและเกษตร",
+          "อาคารและอสังหาริมทรัพย์",
+          "ธุรกิจโลจิสติกส์",
+          "ผู้ประกอบการ SME",
+          "หน่วยงานภาครัฐและเอกชน"
+        ],
+        after: [
+          "VerdiX พร้อมช่วยให้องค์กรสามารถวางแผนด้านสิ่งแวดล้อม พลังงาน และ Net Zero ได้อย่างเป็นระบบและสอดคล้องกับมาตรฐานสากล"
+        ]
+      },
+      {
+        title: "ก้าวสู่อนาคตที่ยั่งยืนไปด้วยกัน",
+        paragraphs: [
+          "เส้นทางสู่ Net Zero อาจไม่ใช่เรื่องง่าย แต่การเริ่มต้นอย่างถูกต้องจะช่วยให้องค์กรสามารถเปลี่ยน “ความท้าทาย” ให้กลายเป็น “โอกาส”",
+          "อนาคตของธุรกิจไม่ได้วัดเพียงผลกำไร แต่รวมถึงความสามารถในการเติบโตอย่างยั่งยืน ลดผลกระทบต่อสิ่งแวดล้อม และสร้างคุณค่าให้กับสังคมในระยะยาว",
+          "VerdiX พร้อมเป็นส่วนหนึ่งในการขับเคลื่อนองค์กรไทยสู่อนาคตสีเขียวอย่างมั่นคงและยั่งยืน"
+        ],
+        cta: [
+          "เริ่มต้นประเมินองค์กรของคุณวันนี้",
+          "วางแผน Net Zero อย่างเป็นระบบ",
+          "เชื่อมต่อกับผู้เชี่ยวชาญด้านความยั่งยืนทั่วประเทศไทย"
+        ],
+        quote: "เพราะการเปลี่ยนแปลงที่ยั่งยืน เริ่มต้นจากการลงมือทำวันนี้"
+      }
+    ]
+  }
+};
+
+const INIT_EXPERTS = [
+  {id:1,name:"Eco-Factory Specialist 01",name_th:"ผู้เชี่ยวชาญ Eco-Factory 01",title_th:"ผู้เชี่ยวชาญ Eco-Factory, ESG และ GRI",title_en:"Eco-Factory, ESG & GRI Specialist",expertise:["Eco-Factory","ESG","GRI"],location:"Chonburi",rating:4.9,reviews:47,manday:15000,avatar:"👨‍🏫"},
+  {id:2,name:"Carbon & Energy Specialist 02",name_th:"ผู้เชี่ยวชาญ Carbon & Energy 02",title_th:"ผู้เชี่ยวชาญพลังงานและ Carbon Footprint",title_en:"Energy & Carbon Footprint Expert",expertise:["CFO/CFP","Net Zero","Energy"],location:"Bangkok",rating:5.0,reviews:32,manday:18000,avatar:"👩‍💼"},
+  {id:3,name:"ISO & Waste Specialist 03",name_th:"ผู้เชี่ยวชาญ ISO & Waste 03",title_th:"ผู้เชี่ยวชาญ ISO 14001 และการจัดการขยะ",title_en:"ISO 14001 & Waste Management Specialist",expertise:["ISO 14001","Waste Management","Eco-Factory"],location:"Rayong",rating:4.7,reviews:28,manday:12000,avatar:"👨‍🔬"},
+  {id:4,name:"ESG Reporting Specialist 04",name_th:"ผู้เชี่ยวชาญ ESG Reporting 04",title_th:"ผู้เชี่ยวชาญ GRI และการรายงาน ESG",title_en:"GRI & ESG Reporting Specialist",expertise:["GRI","ESG","Net Zero"],location:"Bangkok",rating:4.8,reviews:41,manday:20000,avatar:"👩‍💻"},
+  {id:5,name:"Energy Audit Specialist 05",name_th:"ผู้เชี่ยวชาญ Energy Audit 05",title_th:"วิศวกรพลังงานและผู้ตรวจสอบ ISO 50001",title_en:"Energy Engineer & ISO 50001 Auditor",expertise:["Energy","ISO 14001","CFO/CFP"],location:"Chiang Mai",rating:4.6,reviews:19,manday:10000,avatar:"👷"},
+  {id:6,name:"Air & Safety Specialist 06",name_th:"ผู้เชี่ยวชาญ Air & Safety 06",title_th:"ผู้เชี่ยวชาญด้านอากาศและความปลอดภัย",title_en:"Air Quality & Industrial Safety Expert",expertise:["ESG","Waste Management","ISO 14001"],location:"Samut Prakan",rating:4.5,reviews:15,manday:11000,avatar:"👩‍🔬"},
+];
+
+const EXPERT_PLACEHOLDERS = INIT_EXPERTS.reduce((acc, expert) => ({ ...acc, [expert.id]: expert }), {});
+const BLOCKED_EXPERT_NAME_PATTERNS = [
+  /kowit/i,
+  /nathawee/i,
+  /somchai/i,
+  /wanida/i,
+  /prasert/i,
+  /apinya/i,
+  /โกวิท/,
+  /ณัฐวี/,
+  /สมชาย/,
+  /วนิดา/,
+  /ประเสริฐ/,
+  /อาพิณยา/,
+];
+
+function anonymizeExperts(experts = []) {
+  return experts.map((expert, index) => {
+    const placeholder = EXPERT_PLACEHOLDERS[expert.id] || INIT_EXPERTS[index % INIT_EXPERTS.length];
+    return {
+      ...expert,
+      name: placeholder.name,
+      name_th: placeholder.name_th,
+      title_th: placeholder.title_th,
+      title_en: placeholder.title_en,
+      avatar: placeholder.avatar,
+    };
+  });
+}
+
+function getPublicExpertText(expert, index, lang) {
+  const number = String(index + 1).padStart(2, "0");
+  const expertise = (expert.expertise || []).join(", ");
+  return {
+    name: lang === "th" ? `ผู้เชี่ยวชาญหมายเลข ${number}` : `Expert ${number}`,
+    title: lang === "th" ? `ผู้เชี่ยวชาญด้าน ${expertise}` : `Specialist in ${expertise}`,
+  };
+}
+
+function anonymizeArticleAuthors(articles = []) {
+  return articles.map(article => {
+    const author = article.author || "";
+    const shouldAnonymize = BLOCKED_EXPERT_NAME_PATTERNS.some(pattern => pattern.test(author));
+    return shouldAnonymize ? { ...article, author: "VerdiX Editorial" } : article;
+  });
+}
+
+function normalizeArticles(articles = []) {
+  const forcedArticles = new Map([
+    [1, INIT_ARTICLES[0]],
+    [2, INIT_ARTICLES[1]],
+    [3, INIT_ARTICLES[2]],
+  ]);
+  return anonymizeArticleAuthors(articles).map(article => {
+    const title = `${article.title_th || ""} ${article.title_en || ""}`.toLowerCase();
+    const isNetZeroArticle = article.id === 1 || title.includes("thailand net zero 2050");
+    const isEsgArticle = article.id === 2 || title.includes("esg คืออะไร") || title.includes("what is esg");
+    const isEcoFactoryArticle = article.id === 3 || title.includes("eco-factory") || title.includes("มาตรฐานโรงงานสีเขียว");
+    const featured = isNetZeroArticle ? forcedArticles.get(1) : isEsgArticle ? forcedArticles.get(2) : isEcoFactoryArticle ? forcedArticles.get(3) : null;
+    return featured
+      ? {
+          ...article,
+          title_th: featured.title_th,
+          title_en: featured.title_en,
+          excerpt_th: featured.excerpt_th,
+          excerpt_en: featured.excerpt_en,
+          category: featured.category,
+          author: "VerdiX Editorial",
+          image: featured.image,
+        }
+      : article;
+  });
+}
 
 const INIT_SLIDES = [
   {
@@ -506,23 +1026,29 @@ const INIT_FOOTER = {
     {label_th:"เข้าสู่ระบบ",label_en:"Login",page:"login"}
   ],
   services: ["Expert-on-Demand","Eco-Factory","ESG Report","Net Zero Roadmap","CFO/CFP"],
-  email: "info@verdix.co.th",
-  phone: "02-XXX-XXXX",
+  email: "info@verdixgreen.com",
+  email2: "kowit007@gmail.com",
+  phone: "061-951-6639",
   location: "Bangkok, Thailand",
+  location2: "Chonburi, Thailand",
   socials: [
     {icon:"🌐",label:"Website",url:"#"},
     {icon:"in",label:"LinkedIn",url:"#"},
     {icon:"f",label:"Facebook",url:"#"},
-    {icon:"✉",label:"Email",url:"mailto:info@verdix.co.th"}
+    {icon:"✉",label:"Email",url:"mailto:info@verdixgreen.com"}
   ],
-  copyright: "© 2025 BUUxC Planet C",
+  partners: [
+    {type:"buu-ph",name:"Burapha University Faculty of Public Health",url:""},
+    {name:"Burapha University x Planet C",logo:"/partner-buu-planet-c.webp",url:""}
+  ],
+  copyright: "@ 2025 copy right www.verdixgreen.com",
   legalLinks: [
     {label_th:"นโยบายความเป็นส่วนตัว",label_en:"Privacy Policy",page:"#"},
     {label_th:"เงื่อนไขการใช้งาน",label_en:"Terms of Use",page:"#"}
   ]
 };
 
-const FOOTER_STORE_KEY = "verdix.footer";
+const FOOTER_STORE_KEY = "verdixgreen.footer.v2";
 
 const footerApi = {
   list() {
@@ -542,29 +1068,403 @@ const footerApi = {
 // ─── Announce Banner ──────────────────────────────────────────
 const INIT_MENUS = [
   {id:1,label_th:"หน้าแรก",label_en:"Home",page:"home",parent_id:null,order:1,active:true},
+  {id:22,label_th:"เกี่ยวกับเรา",label_en:"About Us",page:"about",parent_id:null,order:1.5,active:true},
   {id:2,label_th:"สิ่งแวดล้อม",label_en:"Environment",page:"env",parent_id:null,order:2,active:true},
   {id:3,label_th:"Carbon Management",label_en:"Carbon Management",page:"carbon",parent_id:null,order:3,active:true},
   {id:4,label_th:"Eco Factory",label_en:"Eco Factory",page:"eco-factory",parent_id:null,order:4,active:true},
   {id:5,label_th:"Amata Awards",label_en:"Amata Awards",page:"amata-awards",parent_id:null,order:5,active:true},
-  {id:6,label_th:"ตรวจประเมิน",label_en:"Assessment",page:"factory-check",parent_id:null,order:6,active:true},
+  {id:6,label_th:"ศูนย์แบบประเมิน",label_en:"Assessment Center",page:"factory-check",parent_id:null,order:6,active:true},
   {id:7,label_th:"ความรู้",label_en:"Knowledge",page:"blog",parent_id:null,order:7,active:true},
-  {id:8,label_th:"ผู้เชี่ยวชาญ",label_en:"Experts",page:"experts",parent_id:null,order:8,active:true},
+  {id:8,label_th:"ติดต่อเรา",label_en:"Contact Us",page:"experts",parent_id:null,order:8,active:true},
+  {id:18,label_th:"ดาวน์โหลดเอกสาร",label_en:"Downloads",page:"downloads",parent_id:null,order:9,active:true},
+  {id:19,label_th:"การประเมิน CFO",label_en:"CFO Assessment",page:"carbon",parent_id:3,order:1,active:true,carbon_tab:"cfo"},
+  {id:20,label_th:"การประเมิน CFP",label_en:"CFP Assessment",page:"carbon",parent_id:3,order:2,active:true,carbon_tab:"cfp"},
   {id:9,label_th:"Eco-Factory Online",label_en:"Eco-Factory Online",page:"factory-check",parent_id:4,order:1,active:true},
   {id:10,label_th:"Amata Best Waste Management Awards",label_en:"Amata Best Waste Management Awards",page:"amata-awards",parent_id:5,order:1,active:true},
+  {id:24,label_th:"แบบประเมินทั้งหมด",label_en:"All Assessments",page:"factory-check",parent_id:6,order:1,active:true},
+  {id:25,label_th:"แบบประเมิน CFO",label_en:"CFO Assessment",page:"carbon",parent_id:6,order:2,active:true,carbon_tab:"cfo"},
+  {id:26,label_th:"แบบประเมิน CFP",label_en:"CFP Assessment",page:"carbon",parent_id:6,order:3,active:true,carbon_tab:"cfp"},
+  {id:27,label_th:"แบบประเมิน Eco Factory",label_en:"Eco Factory Assessment",page:"factory-check",parent_id:6,order:4,active:true},
+  {id:21,label_th:"ระบบคัดกรองภาวะซึมเศร้า",label_en:"Depression Screening System",page:"https://mddscreen.verdixgreen.com/",parent_id:6,order:5,active:true,external_url:"https://mddscreen.verdixgreen.com/"},
+  {id:30,label_th:"แบบสอบถามความพึงพอใจ(TGI)",label_en:"Satisfaction Survey (TGI)",page:"tgi-survey",parent_id:6,order:6,active:true},
+  {id:28,label_th:"แบบสอบถามความพึงพอใจ",label_en:"Satisfaction Survey",page:"experts",parent_id:6,order:7,active:true},
+  {id:29,label_th:"แบบฟอร์มติดต่อ / ขอคำปรึกษา",label_en:"Contact / Consultation Form",page:"experts",parent_id:6,order:8,active:true},
   {id:11,label_th:"บทความ ESG",label_en:"ESG Articles",page:"blog",parent_id:7,order:1,active:true},
-  {id:12,label_th:"เครือข่ายผู้เชี่ยวชาญ",label_en:"Expert Network",page:"experts",parent_id:8,order:1,active:true}
+  {id:23,label_th:"ติดต่อเรา",label_en:"Contact Us",page:"experts",parent_id:8,order:0,active:true},
+  {id:12,label_th:"เครือข่ายผู้เชี่ยวชาญ",label_en:"Expert Network",page:"experts",parent_id:8,order:1,active:true},
+  {id:13,label_th:"หลักเกณฑ์ ECO FACTORY",label_en:"Eco Factory Criteria",page:"eco-factory",parent_id:4,order:2,active:true,eco_tab:"guide"},
+  {id:14,label_th:"ประชาสัมพันธ์",label_en:"News & PR",page:"eco-factory",parent_id:4,order:3,active:true,eco_tab:"news"},
+  {id:15,label_th:"สิทธิประโยชน์",label_en:"Benefits",page:"eco-factory",parent_id:4,order:4,active:true,eco_tab:"benefit"},
+  {id:16,label_th:"ขั้นตอนและตารางประชุม",label_en:"Process & Meeting Schedule",page:"eco-factory",parent_id:4,order:5,active:true,eco_tab:"process"},
+  {id:17,label_th:"ขอขึ้นทะเบียนรับรอง",label_en:"Certification Registration",page:"eco-factory",parent_id:4,order:6,active:true,eco_tab:"apply"}
+];
+
+const ECO_FACTORY_MENU_TABS = [
+  {id:13,label_th:"หลักเกณฑ์ ECO FACTORY",label_en:"Eco Factory Criteria",page:"eco-factory",parent_id:4,order:2,active:true,eco_tab:"guide"},
+  {id:14,label_th:"ประชาสัมพันธ์",label_en:"News & PR",page:"eco-factory",parent_id:4,order:3,active:true,eco_tab:"news"},
+  {id:15,label_th:"สิทธิประโยชน์",label_en:"Benefits",page:"eco-factory",parent_id:4,order:4,active:true,eco_tab:"benefit"},
+  {id:16,label_th:"ขั้นตอนและตารางประชุม",label_en:"Process & Meeting Schedule",page:"eco-factory",parent_id:4,order:5,active:true,eco_tab:"process"},
+  {id:17,label_th:"ขอขึ้นทะเบียนรับรอง",label_en:"Certification Registration",page:"eco-factory",parent_id:4,order:6,active:true,eco_tab:"apply"}
+];
+
+const REQUIRED_MENUS = [
+  {id:22,label_th:"เกี่ยวกับเรา",label_en:"About Us",page:"about",parent_id:null,order:1.5,active:true},
+  {id:18,label_th:"ดาวน์โหลดเอกสาร",label_en:"Downloads",page:"downloads",parent_id:null,order:9,active:true},
+  {id:23,label_th:"ติดต่อเรา",label_en:"Contact Us",page:"experts",parent_id:8,order:0,active:true},
+  {id:24,label_th:"แบบประเมินทั้งหมด",label_en:"All Assessments",page:"factory-check",parent_id:6,order:1,active:true},
+  {id:25,label_th:"แบบประเมิน CFO",label_en:"CFO Assessment",page:"carbon",parent_id:6,order:2,active:true,carbon_tab:"cfo"},
+  {id:26,label_th:"แบบประเมิน CFP",label_en:"CFP Assessment",page:"carbon",parent_id:6,order:3,active:true,carbon_tab:"cfp"},
+  {id:27,label_th:"แบบประเมิน Eco Factory",label_en:"Eco Factory Assessment",page:"factory-check",parent_id:6,order:4,active:true},
+  {id:30,label_th:"แบบสอบถามความพึงพอใจ(TGI)",label_en:"Satisfaction Survey (TGI)",page:"tgi-survey",parent_id:6,order:6,active:true},
+  {id:28,label_th:"แบบสอบถามความพึงพอใจ",label_en:"Satisfaction Survey",page:"experts",parent_id:6,order:7,active:true},
+  {id:29,label_th:"แบบฟอร์มติดต่อ / ขอคำปรึกษา",label_en:"Contact / Consultation Form",page:"experts",parent_id:6,order:8,active:true},
+  {id:19,label_th:"การประเมิน CFO",label_en:"CFO Assessment",page:"carbon",parent_id:3,order:1,active:true,carbon_tab:"cfo"},
+  {id:20,label_th:"การประเมิน CFP",label_en:"CFP Assessment",page:"carbon",parent_id:3,order:2,active:true,carbon_tab:"cfp"},
+  {id:21,label_th:"ระบบคัดกรองภาวะซึมเศร้า",label_en:"Depression Screening System",page:"https://mddscreen.verdixgreen.com/",parent_id:6,order:5,active:true,external_url:"https://mddscreen.verdixgreen.com/"},
+  ...ECO_FACTORY_MENU_TABS
 ];
 
 function normalizeMenus(menus) {
-  return (menus || INIT_MENUS).map(m => {
+  const normalized = (menus || INIT_MENUS).map(m => {
     if (Number(m.id) === 5) {
       return {...m,label_th:"Amata Awards",label_en:"Amata Awards",parent_id:null,order:m.order || 5};
     }
     if (Number(m.id) === 10) {
       return {...m,label_th:"Amata Best Waste Management Awards",label_en:"Amata Best Waste Management Awards",parent_id:5,order:1};
     }
+    if (Number(m.id) === 6) {
+      return {...m,label_th:"ศูนย์แบบประเมิน",label_en:"Assessment Center",page:"factory-check",parent_id:null,order:m.order || 6};
+    }
+    if (Number(m.id) === 21) {
+      return {...m,label_th:"ระบบคัดกรองภาวะซึมเศร้า",label_en:"Depression Screening System",page:"https://mddscreen.verdixgreen.com/",parent_id:6,order:5,active:m.active,external_url:"https://mddscreen.verdixgreen.com/"};
+    }
+    if (Number(m.id) === 30) {
+      return {...m,label_th:"แบบสอบถามความพึงพอใจ(TGI)",label_en:"Satisfaction Survey (TGI)",page:"tgi-survey",parent_id:6,order:6,external_url:undefined};
+    }
+    if (Number(m.id) === 28) {
+      return {...m,label_th:"แบบสอบถามความพึงพอใจ",label_en:"Satisfaction Survey",page:"experts",parent_id:6,order:7};
+    }
+    if (Number(m.id) === 29) {
+      return {...m,label_th:"แบบฟอร์มติดต่อ / ขอคำปรึกษา",label_en:"Contact / Consultation Form",page:"experts",parent_id:6,order:8};
+    }
+    if (Number(m.id) === 8) {
+      return {...m,label_th:"ติดต่อเรา",label_en:"Contact Us",page:"experts",parent_id:null,order:m.order || 8};
+    }
+    if (Number(m.id) === 12) {
+      return {...m,label_th:"เครือข่ายผู้เชี่ยวชาญ",label_en:"Expert Network",page:"experts",parent_id:8,order:m.order || 1};
+    }
     return m;
   });
+  const existingIds = new Set(normalized.map(m => Number(m.id)));
+  return [
+    ...normalized,
+    ...REQUIRED_MENUS.filter(m => !existingIds.has(Number(m.id)))
+  ];
+}
+
+function normalizeDocuments(docs) {
+  const requiredIds = new Set(INIT_DOCUMENTS.map(d => Number(d.id)));
+  const customDocs = (docs || []).filter(d => !requiredIds.has(Number(d.id)));
+  return [...INIT_DOCUMENTS, ...customDocs];
+}
+
+const CFO_ACTIVITY_GROUPS = [
+  {
+    scope: "scope1",
+    title: "Scope 1 - การปล่อยทางตรง",
+    note: "สูตรหลักจาก Fr-04.1: ปริมาณกิจกรรม x ค่า EF / 1000 = tonCO2eq",
+    items: [
+      { key: "gasoline_pump", label: "น้ำมันเบนซิน (ปั๊มสูบน้ำ)", unit: "ลิตร", ef: 2.2719116, source: "EF TGO AR5 - mobile/stationary fuel" },
+      { key: "gasoline_mower", label: "น้ำมันเบนซิน (เครื่องตัดหญ้า)", unit: "ลิตร", ef: 2.2719116, source: "EF TGO AR5" },
+      { key: "diesel_pump", label: "น้ำมันดีเซล (เครื่องสูบน้ำแบบลากจูง)", unit: "ลิตร", ef: 2.70779058, source: "EF TGO AR5 stationary diesel" },
+      { key: "gasoline_vehicle", label: "น้ำมันเบนซิน (รถยนต์ส่วนบุคคล)", unit: "ลิตร", ef: 2.2719116, source: "EF TGO AR5 mobile gasoline" },
+      { key: "diesel_vehicle", label: "น้ำมันดีเซล (รถยนต์ส่วนบุคคล/รถเก็บขยะ/รถแบ็คโฮ)", unit: "ลิตร", ef: 2.74062321, source: "EF TGO AR5 mobile diesel" },
+      { key: "r32", label: "สารทำความเย็น R32", unit: "กิโลกรัม", ef: 677, source: "IPCC 2013 AR5 GWP100" },
+      { key: "septic_ch4", label: "ระบบ Septic tank (CH4)", unit: "กิโลกรัม CH4", ef: 28, source: "IPCC AR5 GWP100 CH4" },
+      { key: "fertilizer_151515", label: "ปุ๋ย 15-15-15", unit: "กิโลกรัม", ef: 0, source: "ระบุ EF ตามแหล่งอ้างอิงที่องค์กรใช้" },
+      { key: "co2_extinguisher", label: "ถังดับเพลิง CO2", unit: "กิโลกรัม CO2", ef: 1, source: "Mass CO2 direct release" },
+    ],
+  },
+  {
+    scope: "scope2",
+    title: "Scope 2 - พลังงานไฟฟ้าที่ซื้อมา",
+    note: "สูตรจาก Fr-04.1 แถวการใช้พลังงานไฟฟ้า: kWh x 0.4999 / 1000",
+    items: [
+      { key: "grid_electricity", label: "การใช้ไฟฟ้าระบบ grid mix", unit: "kWh", ef: 0.4999, source: "Thai National LCI Database / TGO electricity AR5" },
+    ],
+  },
+  {
+    scope: "scope3",
+    title: "Scope 3 - การปล่อยทางอ้อมอื่น",
+    note: "สูตรเดียวกันกับ Scope 3 ใน workbook: activity data x EF / 1000 และประเมินความมีนัยสำคัญแยกได้ภายหลัง",
+    items: [
+      { key: "water_supply", label: "น้ำประปา", unit: "ลูกบาศก์เมตร", ef: 0.344, source: "ค่า EF น้ำประปาตั้งต้นจากแบบคำนวณเดิม" },
+      { key: "a4_paper_70gsm", label: "กระดาษ A4 70 แกรม", unit: "กิโลกรัม", ef: 1.2, source: "ปรับ EF ตามฐานข้อมูล LCI ที่ใช้จริง" },
+      { key: "general_waste", label: "ขยะทั่วไป", unit: "กิโลกรัม", ef: 0.42, source: "ค่า EF ตั้งต้นสำหรับขยะทั่วไป" },
+      { key: "upstream_transport_tkm", label: "การขนส่งต้นน้ำ", unit: "ton-km", ef: 0.045, source: "คำนวณ tkm = ระยะทาง x น้ำหนัก / 1000" },
+      { key: "employee_gasoline_commute", label: "การเดินทางพนักงาน - เบนซิน", unit: "ลิตร", ef: 2.2719116, source: "ระยะทางต่อปี / อัตราสิ้นเปลือง" },
+      { key: "employee_diesel_commute", label: "การเดินทางพนักงาน - ดีเซล", unit: "ลิตร", ef: 2.74062321, source: "ระยะทางต่อปี / อัตราสิ้นเปลือง" },
+    ],
+  },
+];
+
+const CFO_ITEMS = CFO_ACTIVITY_GROUPS.flatMap(group => group.items.map(item => ({ ...item, scope: group.scope })));
+const CFO_SCOPE_LABELS = { scope1: "Scope 1", scope2: "Scope 2", scope3: "Scope 3" };
+const CFO_STATUS_LABELS = {
+  draft: "ร่าง",
+  submitted: "รอตรวจประเมิน",
+  approved: "ยืนยันถูกต้อง",
+  needs_revision: "ส่งกลับแก้ไข",
+};
+
+function defaultCfoRows() {
+  return Object.fromEntries(CFO_ITEMS.map(item => [item.key, { quantity: "", ef: item.ef, evidence: "", note: "" }]));
+}
+
+function numberValue(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function calculateCfoAssessment(rows) {
+  const lines = CFO_ITEMS.map(item => {
+    const row = rows?.[item.key] || {};
+    const quantity = numberValue(row.quantity);
+    const ef = numberValue(row.ef ?? item.ef);
+    const emission = quantity * ef / 1000;
+    return { ...item, quantity, ef, emission };
+  });
+  const totals = lines.reduce((acc, line) => {
+    acc[line.scope] = (acc[line.scope] || 0) + line.emission;
+    return acc;
+  }, { scope1: 0, scope2: 0, scope3: 0 });
+  const scope12 = totals.scope1 + totals.scope2;
+  const total = scope12 + totals.scope3;
+  return { lines, totals, scope12, total };
+}
+
+function formatTon(value) {
+  return Number(value || 0).toLocaleString("th-TH", { maximumFractionDigits: 3 });
+}
+
+const TGI_CSV_COLUMNS = [
+  "respondent_name",
+  "tambon",
+  "village",
+  "community",
+  "organization",
+  "student_recorder",
+  "overall_score",
+  "awareness_score",
+  "participation_score",
+  "behavior_score",
+  "csr_focus",
+  "suggestion",
+  "supplemental_answers_json",
+  "google_grid_answers_json",
+  "created_at",
+];
+
+const TGI_FIELD_PLAN = {
+  areaCount: 5,
+  villageCount: 30,
+  householdCount: 8500,
+  sampleCount: 420,
+  studentCount: 18,
+  schedules: [
+    { date: "26 มิถุนายน 2569", students: 9 },
+    { date: "27 มิถุนายน 2569", students: 9 },
+  ],
+  rows: [
+    { order: 1, tambon: "หนองปรือ", villageText: "หมู่ 1-3", villageNos: [1,2,3], villages: 3, households: 1800, ratio: "21.2%", samples: 89 },
+    { order: 2, tambon: "ศีรษะจรเข้น้อย", villageText: "หมู่ 1-12", villageNos: [1,2,3,4,5,6,7,8,9,10,11,12], villages: 12, households: 3200, ratio: "37.6%", samples: 158 },
+    { order: 3, tambon: "ศีรษะจรเข้ใหญ่", villageText: "หมู่ 3-9", villageNos: [3,4,5,6,7,8,9], villages: 7, households: 1500, ratio: "17.6%", samples: 74 },
+    { order: 4, tambon: "บางเสาธง", villageText: "หมู่ 10-14", villageNos: [10,11,12,13,14], villages: 5, households: 1200, ratio: "14.1%", samples: 59 },
+    { order: 5, tambon: "บางโฉลง", villageText: "หมู่ 5, 7, 10", villageNos: [5,7,10], villages: 3, households: 800, ratio: "9.4%", samples: 40 },
+  ],
+};
+
+const TGI_STUDENT_OPTIONS = [
+  "นายปฏิพล ล้อมสาย",
+  "นางสาวสุชัญญา กันบาง",
+  "นางสาวธัญรัตน์ จีนปาน",
+  "นางสาวพรนภา มุสิกชาติ",
+  "นางสาวมินตรา มงคล",
+  "นางสาวเลนดา เรืองไพศาล",
+  "นางสาวนาตาชา หะ",
+  "นายจตุรา",
+  "นายธนกฤต ทองระอา",
+  "อัครเดช สำราญสุข",
+  "อรณัญช์ ยิ่งเชิดงาม",
+];
+
+const TGI_TAMBON_OPTIONS = TGI_FIELD_PLAN.rows.map(row => row.tambon);
+
+function tgiVillageOptionsFor(tambon) {
+  return TGI_FIELD_PLAN.rows.find(row => row.tambon === tambon)?.villageNos || [];
+}
+
+function averageOf(rows, key) {
+  const values = (rows || []).map(row => Number(row[key])).filter(Number.isFinite);
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function tgiRecorderName(row) {
+  return row.raw_data?.student_recorder || row.raw_data?.supplemental_answers?.student_recorder?.value || "ไม่ระบุ";
+}
+
+function tgiTambonName(row) {
+  const rawValue = row.raw_data?.tambon || row.raw_data?.subdistrict || row.raw_data?.supplemental_answers?.tambon?.value || row.community || "";
+  const text = String(rawValue || "");
+  return TGI_TAMBON_OPTIONS.find(tambon => text.includes(tambon)) || "ไม่ระบุ";
+}
+
+function tgiVillageNo(row) {
+  const rawValue = row.raw_data?.village || row.raw_data?.village_no || row.raw_data?.supplemental_answers?.village?.value || row.raw_data?.supplemental_answers?.domicile?.value || row.community || "";
+  const text = String(rawValue || "");
+  const match = text.match(/(?:หมู่|ม\.|village)?\s*(\d{1,2})/i);
+  return match ? Number(match[1]) : null;
+}
+
+function countTop(rows, getter, limit = 5) {
+  return Object.entries((rows || []).reduce((acc, row) => {
+    const key = getter(row) || "ไม่ระบุ";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {})).sort((a,b) => b[1] - a[1]).slice(0, limit).map(([label, count]) => ({ label, count }));
+}
+
+function tgiScoreLevel(avg) {
+  if (avg >= 4.21) return "ดีมาก";
+  if (avg >= 3.41) return "ดี";
+  if (avg >= 2.61) return "ปานกลาง";
+  if (avg >= 1.81) return "ควรปรับปรุง";
+  if (avg > 0) return "ต้องเร่งปรับปรุง";
+  return "ยังไม่มีข้อมูล";
+}
+
+function summarizeTgiSurvey(rows = []) {
+  const topFocusRows = countTop(rows, row => row.csr_focus || "ไม่ระบุ", 5);
+  const topCommunityRows = countTop(rows, row => row.community || "ไม่ระบุ", 5);
+  const topRecorderRows = countTop(rows, tgiRecorderName, 5);
+  const avgOverall = averageOf(rows, "overall_score");
+  const avgAwareness = averageOf(rows, "awareness_score");
+  const avgParticipation = averageOf(rows, "participation_score");
+  const avgBehavior = averageOf(rows, "behavior_score");
+  const latestDate = rows.map(row => row.created_at).filter(Boolean).sort().at(-1);
+  const tambonRows = TGI_FIELD_PLAN.rows.map(plan => {
+    const tambonResponses = rows.filter(row => tgiTambonName(row) === plan.tambon);
+    return {
+      ...plan,
+      collected: tambonResponses.length,
+      remaining: Math.max(0, plan.samples - tambonResponses.length),
+      progress: plan.samples ? Math.min(100, tambonResponses.length / plan.samples * 100) : 0,
+      villageRows: plan.villageNos.map(village => {
+        const collected = tambonResponses.filter(row => tgiVillageNo(row) === village).length;
+        return { tambon: plan.tambon, village, collected };
+      }),
+    };
+  });
+  const villageRows = tambonRows.flatMap(row => row.villageRows);
+  const studentRows = TGI_STUDENT_OPTIONS.map(name => ({
+    name,
+    collected: rows.filter(row => tgiRecorderName(row) === name).length,
+  }));
+  const unknownRecorderCount = rows.filter(row => tgiRecorderName(row) === "ไม่ระบุ").length;
+  return {
+    total: rows.length,
+    avgOverall,
+    avgAwareness,
+    avgParticipation,
+    avgBehavior,
+    scoreLevel: tgiScoreLevel(avgOverall),
+    topFocus: topFocusRows[0]?.label || "-",
+    topFocusRows,
+    topCommunityRows,
+    topRecorderRows,
+    tambonRows,
+    villageRows,
+    studentRows,
+    unknownRecorderCount,
+    latestDate,
+  };
+}
+
+function splitCsvLine(line) {
+  const cells = [];
+  let current = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    const next = line[i + 1];
+    if (ch === '"' && quoted && next === '"') {
+      current += '"';
+      i += 1;
+    } else if (ch === '"') {
+      quoted = !quoted;
+    } else if (ch === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  cells.push(current);
+  return cells.map(cell => cell.trim());
+}
+
+function parseTgiCsv(text) {
+  const lines = String(text || "").split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  if (!lines.length) return [];
+  const header = splitCsvLine(lines[0]).map(cell => cell.trim());
+  const hasKnownHeader = header.some(col => TGI_CSV_COLUMNS.includes(col));
+  const columns = hasKnownHeader ? header : TGI_CSV_COLUMNS;
+  const rows = hasKnownHeader ? lines.slice(1) : lines;
+  return rows.map((line, index) => {
+    const cells = splitCsvLine(line);
+    const raw = Object.fromEntries(columns.map((col, i) => [col, cells[i] || ""]));
+    const tambon = raw.tambon || raw["ตำบล"] || "";
+    const village = raw.village || raw["หมู่"] || "";
+    return {
+      id: Date.now() + index,
+      respondent_name: raw.respondent_name || raw["ชื่อ"] || raw["ชื่อ-นามสกุล"] || "",
+      community: raw.community || raw["ชุมชน"] || (tambon && village ? `${tambon} หมู่ ${village}` : ""),
+      organization: raw.organization || "TGI",
+      overall_score: Number(raw.overall_score || raw["overall_score"] || 0),
+      awareness_score: Number(raw.awareness_score || raw["awareness_score"] || 0),
+      participation_score: Number(raw.participation_score || raw["participation_score"] || 0),
+      behavior_score: Number(raw.behavior_score || raw["behavior_score"] || 0),
+      csr_focus: raw.csr_focus || raw["csr_focus"] || "",
+      suggestion: raw.suggestion || raw["ข้อเสนอแนะ"] || "",
+      created_at: raw.created_at || new Date().toISOString(),
+      raw_data: {
+        ...raw,
+        tambon,
+        village,
+      },
+    };
+  });
+}
+
+function csvEscape(value) {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function getTgiCsvValue(row, col) {
+  if (col === "student_recorder") return row.raw_data?.student_recorder || "";
+  if (col === "tambon") return tgiTambonName(row);
+  if (col === "village") return tgiVillageNo(row) || "";
+  if (col === "supplemental_answers_json") return JSON.stringify(row.raw_data?.supplemental_answers || {});
+  if (col === "google_grid_answers_json") return JSON.stringify(row.raw_data?.google_grid_answers || {});
+  return row[col];
+}
+
+function toTgiCsv(rows = []) {
+  const head = TGI_CSV_COLUMNS.join(",");
+  const body = rows.map(row => TGI_CSV_COLUMNS.map(col => csvEscape(getTgiCsvValue(row, col))).join(",")).join("\n");
+  return [head, body].filter(Boolean).join("\n");
 }
 
 function AnnounceBanner({ lang }) {
@@ -614,19 +1514,138 @@ function BackToTop() {
   );
 }
 
+function localAiAnswer(text, lang) {
+  const q = text.toLowerCase();
+  const th = lang === "th";
+  if (q.includes("eco") || q.includes("factory") || q.includes("โรงงาน")) {
+    return th
+      ? "Eco Factory คือมาตรฐานโรงงานอุตสาหกรรมเชิงนิเวศ โดยทั่วไปต้องเตรียมข้อมูลด้านพลังงาน น้ำ อากาศ กากของเสีย GHG ชุมชน และระบบบริหารจัดการสิ่งแวดล้อม คุณสามารถเริ่มจากเมนู Eco Factory และดาวน์โหลดเอกสารเกณฑ์ได้ในหน้า ดาวน์โหลดเอกสาร"
+      : "Eco Factory readiness usually covers energy, water, air, waste, GHG, community, and environmental management evidence. Start from the Eco Factory menu and the Downloads page.";
+  }
+  if (q.includes("cfo") || q.includes("cfp") || q.includes("carbon") || q.includes("คาร์บอน")) {
+    return th
+      ? "CFO คือ Carbon Footprint for Organization ส่วน CFP คือ Carbon Footprint of Product ระบบควรเริ่มจากเก็บ activity data เช่น ไฟฟ้า เชื้อเพลิง วัตถุดิบ ขนส่ง ของเสีย และ emission factor ตามแนวทาง TGO/ISO"
+      : "CFO is organization-level carbon footprint, while CFP is product-level footprint. Begin with activity data such as electricity, fuel, materials, transport, waste, and proper emission factors.";
+  }
+  if (q.includes("iot") || q.includes("mqtt") || q.includes("sensor") || q.includes("plc")) {
+    return th
+      ? "งาน IoT/MQTT สำหรับสิ่งแวดล้อมควรวาง flow เป็น Sensor/PLC -> Gateway -> MQTT Broker -> Dashboard -> Alert/Report โดยกำหนด topic, unit, sampling rate และ data quality ให้ชัดเจน"
+      : "A good IoT/MQTT flow is Sensor/PLC -> Gateway -> MQTT Broker -> Dashboard -> Alert/Report. Define topics, units, sampling rate, and data quality rules clearly.";
+  }
+  if (q.includes("download") || q.includes("เอกสาร") || q.includes("โหลด")) {
+    return th
+      ? "ไปที่เมนู ดาวน์โหลดเอกสาร ได้เลยครับ ตอนนี้มีหมวด Eco Factory และปุ่มดูไฟล์ทั้งหมดเพื่อเปิดรายละเอียดไฟล์แยกรายการ"
+      : "Open the Downloads menu. It includes Eco Factory categories and a View All Files button for document details.";
+  }
+  return th
+    ? "ตอนนี้ระบบ AI backend ยังไม่ได้ใส่ OpenAI API Key บน server แต่ผมช่วยตอบเบื้องต้นได้เรื่อง Eco Factory, CFO/CFP, Carbon Footprint, IoT/MQTT, ESG และการดาวน์โหลดเอกสารครับ"
+    : "The AI backend is not configured with an OpenAI API key yet, but I can still help with Eco Factory, CFO/CFP, Carbon Footprint, IoT/MQTT, ESG, and document downloads.";
+}
+
+function AiChatWidget({ lang }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [input, setInput] = useState("");
+  const L = (th,en) => lang === "th" ? th : en;
+  const [messages, setMessages] = useState([
+    {
+      role: "assistant",
+      content: L(
+        "สวัสดีครับ ผมคือ VerdiX AI ถามได้เรื่อง Eco Factory, CFO/CFP, Carbon Footprint, IoT/MQTT และเอกสารดาวน์โหลด",
+        "Hello, I am VerdiX AI. Ask me about Eco Factory, CFO/CFP, Carbon Footprint, IoT/MQTT, or downloads."
+      )
+    }
+  ]);
+  const suggestions = [
+    L("ต้องเตรียม Eco Factory อย่างไร", "How to prepare for Eco Factory"),
+    L("CFO กับ CFP ต่างกันอย่างไร", "CFO vs CFP"),
+    L("MQTT ใช้กับ Sensor ยังไง", "MQTT with sensors")
+  ];
+
+  const sendMessage = async (overrideText) => {
+    const text = (overrideText || input).trim();
+    if (!text || busy) return;
+    const nextMessages = [...messages, {role:"user", content:text}];
+    setMessages(nextMessages);
+    setInput("");
+    setBusy(true);
+
+    try {
+      const res = await fetch("/api/chat.php", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ message: text, lang, history: nextMessages.slice(-8) })
+      });
+      if (!res.ok) throw new Error("chat endpoint unavailable");
+      const data = await res.json();
+      setMessages(prev => [...prev, {role:"assistant", content:data.reply || localAiAnswer(text, lang)}]);
+    } catch {
+      setMessages(prev => [...prev, {role:"assistant", content:localAiAnswer(text, lang)}]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="ai-chat">
+      {!open ? (
+        <button className="ai-chat-toggle" onClick={() => setOpen(true)}>
+          <span>AI</span><span>{L("ถาม VerdiX AI","Ask VerdiX AI")}</span>
+        </button>
+      ) : (
+        <div className="ai-chat-panel">
+          <div className="ai-chat-head">
+            <div>
+              <div className="ai-chat-title">VerdiX AI Assistant</div>
+              <div className="ai-chat-sub">{L("ผู้ช่วยด้านสิ่งแวดล้อมโรงงาน","Factory environmental assistant")}</div>
+            </div>
+            <button className="ai-chat-close" onClick={() => setOpen(false)} aria-label="Close">×</button>
+          </div>
+          <div className="ai-chat-messages">
+            {messages.map((m,i) => (
+              <div className={`ai-msg ${m.role === "user" ? "user" : "bot"}`} key={i}>{m.content}</div>
+            ))}
+            {busy && <div className="ai-msg bot">{L("กำลังคิดคำตอบ...","Thinking...")}</div>}
+          </div>
+          <div className="ai-chat-suggestions">
+            {suggestions.map(s => <button key={s} onClick={() => sendMessage(s)} disabled={busy}>{s}</button>)}
+          </div>
+          <form className="ai-chat-form" onSubmit={(e) => { e.preventDefault(); sendMessage(); }}>
+            <input className="ai-chat-input" value={input} onChange={e=>setInput(e.target.value)} placeholder={L("พิมพ์คำถาม...","Type a question...")} />
+            <button className="ai-chat-send" disabled={busy || !input.trim()}>{L("ส่ง","Send")}</button>
+          </form>
+          <div className="ai-chat-note">{L("คำตอบจาก AI ใช้เพื่อช่วยเบื้องต้น ควรตรวจสอบกับผู้เชี่ยวชาญก่อนยื่นรับรอง","AI answers are for initial guidance. Verify with an expert before certification submission.")}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Navbar ───────────────────────────────────────────────────
 function Navbar({ t, lang, setLang, page, nav, user, logout, menus }) {
+  const [openMenuId, setOpenMenuId] = useState(null);
   const activeMenus = normalizeMenus(menus).filter(m => m.active !== false);
   const topMenus = activeMenus.filter(m => !m.parent_id && m.page !== "home").sort((a,b) => (a.order || 0) - (b.order || 0));
   const childrenOf = (id) => activeMenus.filter(m => String(m.parent_id) === String(id)).sort((a,b) => (a.order || 0) - (b.order || 0));
   const labelOf = (m) => lang === "th" ? (m.label_th || m.label_en) : (m.label_en || m.label_th);
   const goTopMenu = (menuPage) => {
-    if (menuPage === "eco-factory") {
-      window.location.href = "https://app.verdixgreen.com";
+    nav(menuPage || "home");
+  };
+  const goSubMenu = (menu) => {
+    setOpenMenuId(null);
+    if (Number(menu.id) === 9) {
+      window.location.href = "https://app.verdixgreen.com/#dashboard";
+      return;
+    }
+    if (menu.external_url || /^https?:\/\//.test(menu.page || "")) {
+      window.location.href = menu.external_url || menu.page;
       return;
     }
 
-    nav(menuPage || "home");
+    nav(menu.page || "home", {
+      ...(menu.eco_tab ? {ecoTab: menu.eco_tab} : {}),
+      ...(menu.carbon_tab ? {carbonTab: menu.carbon_tab} : {})
+    });
   };
 
   return (
@@ -641,14 +1660,20 @@ function Navbar({ t, lang, setLang, page, nav, user, logout, menus }) {
             const subs = childrenOf(m.id);
             const isActive = page === m.page || subs.some(s => s.page === page);
             return (
-              <div className="nav-item" key={m.id}>
-                <button className={`nav-btn always ${m.page==="amata-awards"?"nav-awards":""} ${isActive?"active":""}`} onClick={() => goTopMenu(m.page)}>
+              <div className={`nav-item ${openMenuId === m.id ? "open" : ""}`} key={m.id}>
+                <button className={`nav-btn always ${m.page==="amata-awards"?"nav-awards":""} ${isActive?"active":""}`} onClick={() => {
+                  if (subs.length > 0) {
+                    setOpenMenuId(id => id === m.id ? null : m.id);
+                    return;
+                  }
+                  goTopMenu(m.page);
+                }}>
                   {labelOf(m)} {subs.length > 0 && <span className="nav-caret">▾</span>}
                 </button>
                 {subs.length > 0 && (
                   <div className="sub-menu">
                     {subs.map(s => (
-                      <button key={s.id} className={page===s.page?"active":""} onClick={() => nav(s.page || "home")}>{labelOf(s)}</button>
+                      <button key={s.id} className={page===s.page?"active":""} onClick={() => goSubMenu(s)}>{labelOf(s)}</button>
                     ))}
                   </div>
                 )}
@@ -657,7 +1682,8 @@ function Navbar({ t, lang, setLang, page, nav, user, logout, menus }) {
           })}
           {user ? (
             <>
-              {user.role==="admin" && <button className={`nav-btn always ${page==="admin"?"active":""}`} onClick={() => nav("admin")}>{t.dashboard}</button>}
+              {canAccessAdminPanel(user.role) && <button className={`nav-btn always ${page==="admin"?"active":""}`} onClick={() => nav("admin")}>{user.role === "tgi_report_viewer" ? (lang === "th" ? "รายงาน TGI" : "TGI Report") : t.dashboard}</button>}
+              {!canAccessAdminPanel(user.role) && <button className={`nav-btn always ${page==="member"?"active":""}`} onClick={() => nav("member")}>{t.dashboard}</button>}
               <button className="nav-btn always" onClick={logout}>{t.logout}</button>
             </>
           ) : (
@@ -675,9 +1701,12 @@ function Navbar({ t, lang, setLang, page, nav, user, logout, menus }) {
 
 // ─── Article Card ─────────────────────────────────────────────
 function ArtCard({ a, lang, t, onClick }) {
+  const hasImage = typeof a.image === "string" && a.image.startsWith("/");
   return (
     <article className="art-card" onClick={onClick}>
-      <div className="art-img">{a.image}</div>
+      <div className={`art-img ${hasImage ? "has-image" : ""}`}>
+        {hasImage ? <img src={a.image} alt={lang==="th"?a.title_th:a.title_en} loading="lazy" /> : a.image}
+      </div>
       <div className="art-body">
         <div className="art-meta">
           <span className="badge">{a.category}</span>
@@ -710,15 +1739,36 @@ function FaqItem({ q, a }) {
 
 // ─── Home Page ────────────────────────────────────────────────
 function BrandLogo({ className = "" }) {
-  return (
-    <span className={`brand-logo ${className}`} aria-label="BUUxC Planet C">
-      <span className="brand-main">
-        <span className="brand-buu">BU<span className="brand-u2">U</span></span>
-        <span className="brand-x">x</span>
-        <span className="brand-c">C</span>
+  if (className.includes("nav-brand")) {
+    return (
+      <span className="nav-wordmark" aria-label="VerdiX">
+        <span className="word-verdi">Verdi</span><span className="word-x">X</span>
+        <span className="nav-mark-sub">The Sustainability Expert-on-Demand Platform</span>
       </span>
-      <span className="brand-sub">Planet C</span>
-      <span className="brand-line" />
+    );
+  }
+  if (className.includes("auth-brand")) {
+    return (
+      <span className="auth-wordmark" aria-label="VerdiX">
+        <span className="auth-wordmark-main">
+          <span className="word-verdi">Verdi</span><span className="word-x">X</span>
+        </span>
+        <span className="auth-wordmark-sub">The Sustainability Expert-on-Demand Platform</span>
+      </span>
+    );
+  }
+  if (className.includes("footer-brand")) {
+    return (
+      <span className="footer-wordmark" aria-label="VerdiX">
+        <span className="word-verdi">Verdi</span><span className="word-x">X</span>
+        <span className="footer-mark-sub">The Sustainability Expert-on-Demand Platform</span>
+      </span>
+    );
+  }
+
+  return (
+    <span className={`brand-logo ${className}`} aria-label="VerdiX">
+      <img src="/verdix-logo.png" alt="VerdiX" />
     </span>
   );
 }
@@ -739,6 +1789,56 @@ function BUUPHLogo() {
         <text x="0" y="198" className="partner-caption" fontSize="18" fill="rgba(255,255,255,.48)">WISDOM OF THE EAST</text>
       </svg>
     </span>
+  );
+}
+
+function FooterPartnerCard({ partner }) {
+  const content = partner?.type === "buu-ph"
+    ? <BUUPHLogo />
+    : partner?.logo
+      ? <img className={`footer-partner-img ${partner.logo.includes("partner-buu-planet-c") ? "partner-buu-planet-c" : ""}`} src={partner.logo} alt={partner.name || "Partner logo"} loading="lazy" />
+      : <span className="footer-partner-name">{partner?.name || "Partner"}</span>;
+
+  if (partner?.url) {
+    return (
+      <a className="footer-partner-card" href={partner.url} target="_blank" rel="noreferrer" aria-label={partner.name || "Partner"}>
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <div className="footer-partner-card" aria-label={partner?.name || "Partner"}>
+      {content}
+    </div>
+  );
+}
+
+function FooterPartners({ lang, partners }) {
+  const requiredPartners = INIT_FOOTER.partners || [];
+  const basePartners = (partners && partners.length ? partners : INIT_FOOTER.partners).filter(Boolean);
+  const list = [
+    ...basePartners,
+    ...requiredPartners.filter(required => !basePartners.some(partner =>
+      (required.type && partner.type === required.type) ||
+      (required.logo && partner.logo === required.logo) ||
+      (required.name && partner.name === required.name)
+    ))
+  ];
+  if (!list.length) return null;
+
+  return (
+    <div className="footer-partners">
+      <div className="footer-partners-head">
+        <div className="footer-partners-title">{lang === "th" ? "Partners" : "Partners"}</div>
+        <div className="footer-partners-note">
+          {lang === "th" ? "เครือข่ายความร่วมมือด้านความยั่งยืนและสิ่งแวดล้อม" : "Our sustainability and environmental collaboration network"}
+        </div>
+      </div>
+      <div className="footer-partner-list">
+        {list.map((partner, i) => <FooterPartnerCard key={`${partner.name || partner.logo || partner.type || "partner"}-${i}`} partner={partner} />)}
+      </div>
+    </div>
   );
 }
 
@@ -772,36 +1872,39 @@ function HeroSlideshow({ lang, nav, slides }) {
 
   return (
     <section className="hero">
-      <div className="hero-bg" style={{backgroundImage:`url(${slide.image})`}} />
       <div className="container">
-        <div className="hero-copy fade-in" key={slide.id}>
-          <div className="hero-tag">🌿 {tSafe(L(slide.tag_th, slide.tag_en), "Sustainability Expert-on-Demand Platform")}</div>
-          {L(slide.title_th, slide.title_en).toLowerCase() === "buuxc"
-            ? <BrandLogo className="hero-brand" />
-            : <h1 className="hero-title">{L(slide.title_th, slide.title_en)}</h1>}
-          <div className="hero-kicker">&quot;{L(slide.kicker_th, slide.kicker_en)}&quot;</div>
-          <p className="hero-sub">{L(slide.subtitle_th, slide.subtitle_en)}</p>
-          <div className="hero-ctas">
-            <button className="btn btn-dark" style={{fontSize:16,padding:"13px 30px"}} onClick={() => nav(slide.primary_page || "register")}>{L(slide.primary_th, slide.primary_en)}</button>
-            <button className="btn-ghost" style={{fontSize:15,padding:"11px 24px"}} onClick={() => nav(slide.secondary_page || "experts")}>{L(slide.secondary_th, slide.secondary_en)}</button>
-          </div>
-          <div className="hero-stats">
-            {[["70,000+",lang==="th"?"โรงงานในไทย":"Thai Factories"],["10,000+",lang==="th"?"องค์กรส่งออก":"Export Organizations"],["16,000M+",lang==="th"?"TAM (บาท/ปี)":"TAM (THB/yr)"],["50%+",lang==="th"?"ลดเวลารายงาน":"Reporting Time Saved"]].map(([n,l]) => (
-              <div key={l}><div className="stat-num">{n}</div><div className="stat-lbl">{l}</div></div>
-            ))}
+        <div className="hero-frame">
+          <div className="hero-bg" style={{backgroundImage:`url(${slide.image})`}} />
+          <div className="hero-copy fade-in" key={slide.id}>
+            <div className="hero-tag">🌿 {tSafe(L(slide.tag_th, slide.tag_en), "Sustainability Expert-on-Demand Platform")}</div>
+            {L(slide.title_th, slide.title_en).toLowerCase() === "buuxc"
+              ? <BrandLogo className="hero-brand" />
+              : <h1 className="hero-title">{L(slide.title_th, slide.title_en)}</h1>}
+            <div className="hero-kicker">&quot;{L(slide.kicker_th, slide.kicker_en)}&quot;</div>
+            <p className="hero-sub">{L(slide.subtitle_th, slide.subtitle_en)}</p>
+            <div className="hero-ctas">
+              <button className="btn btn-dark" style={{fontSize:14,padding:"10px 22px"}} onClick={() => nav(slide.primary_page || "register")}>{L(slide.primary_th, slide.primary_en)}</button>
+              <button className="btn-ghost" style={{fontSize:14,padding:"9px 20px"}} onClick={() => nav(slide.secondary_page || "experts")}>{L(slide.secondary_th, slide.secondary_en)}</button>
+            </div>
+            <div className="hero-stats">
+              {[["70,000+",lang==="th"?"โรงงานในไทย":"Thai Factories"],["10,000+",lang==="th"?"องค์กรส่งออก":"Export Organizations"],["16,000M+",lang==="th"?"TAM (บาท/ปี)":"TAM (THB/yr)"],["50%+",lang==="th"?"ลดเวลารายงาน":"Reporting Time Saved"]].map(([n,l]) => (
+                <div key={l}><div className="stat-num">{n}</div><div className="stat-lbl">{l}</div></div>
+              ))}
+            </div>
           </div>
           <div className="hero-slide-card" aria-label="Hero slides">
-            <button className="slide-nav" onClick={prev} aria-label="Previous slide">‹</button>
-            {list.map((s, i) => <button key={s.id} className={`slide-dot ${i===idx?"active":""}`} onClick={() => setIdx(i)} aria-label={`Go to slide ${i+1}`} />)}
-            <button className="slide-nav" onClick={next} aria-label="Next slide">›</button>
+              <button className="slide-nav" onClick={prev} aria-label="Previous slide">‹</button>
+              {list.map((s, i) => <button key={s.id} className={`slide-dot ${i===idx?"active":""}`} onClick={() => setIdx(i)} aria-label={`Go to slide ${i+1}`} />)}
+              <button className="slide-nav" onClick={next} aria-label="Next slide">›</button>
+            </div>
           </div>
         </div>
-      </div>
     </section>
   );
 }
 
 function HomePage({ t, lang, nav, articles, slides }) {
+  const [previewImage, setPreviewImage] = useState(null);
   return (
     <>
       <HeroSlideshow lang={lang} nav={nav} slides={slides} />
@@ -813,14 +1916,72 @@ function HomePage({ t, lang, nav, articles, slides }) {
             <h2 className="section-title">{t.feat_title}</h2>
             <p className="section-sub" style={{margin:"0 auto"}}>{t.feat_sub}</p>
           </div>
-          <div className="articles-grid">
-            {[{icon:"🤝",t:t.f1t,d:t.f1d},{icon:"📋",t:t.f2t,d:t.f2d},{icon:"📈",t:t.f3t,d:t.f3d}].map(f => (
+          <div className="solution-grid">
+            {[
+              {icon:"🏭",t:t.f1t,d:t.f1d,image:"/sustainability-assessment-engine.png"},
+              {icon:"🌡️",t:t.f2t,d:t.f2d,image:"/expert-on-demand-marketplace.png"},
+              {icon:"📡",t:t.f3t,d:t.f3d,image:"/iot-mqtt-environmental-monitoring.svg"},
+              {icon:"📈",t:t.f4t,d:t.f4d,image:"/automated-reporting-system.png"}
+            ].map(f => (
               <div className="feat-card" key={f.t}>
-                <div className="feat-icon">{f.icon}</div>
+                {f.image && (
+                  <button className="feat-image-btn" type="button" onClick={() => setPreviewImage(f.image)} aria-label={`${f.t} - view larger image`}>
+                    <img className="feat-image" src={f.image} alt={f.t} loading="lazy" />
+                  </button>
+                )}
+                {!f.image && <div className="feat-icon">{f.icon}</div>}
                 <h3 className="feat-title">{f.t}</h3>
                 <p className="feat-desc">{f.d}</p>
               </div>
             ))}
+          </div>
+          {previewImage && (
+            <div className="image-modal-backdrop" role="dialog" aria-modal="true" onClick={() => setPreviewImage(null)}>
+              <div className="image-modal" onClick={(e) => e.stopPropagation()}>
+                <button className="image-modal-close" type="button" onClick={() => setPreviewImage(null)} aria-label={lang === "th" ? "ปิดภาพ" : "Close image"}>{lang === "th" ? "ปิด" : "Close"}</button>
+                <img src={previewImage} alt={previewImage.includes("automated-reporting") ? t.f4t : previewImage.includes("sustainability") ? t.f1t : previewImage.includes("iot-mqtt") ? t.f3t : t.f2t} />
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="section" style={{paddingTop:0}}>
+        <div className="container">
+          <div className="platform-flow">
+            <div className="platform-flow-head">
+              <div>
+                <span className="section-tag">● IOT + CARBON DATA FLOW</span>
+                <h3>{t.flow_title}</h3>
+                <p>{t.flow_sub}</p>
+              </div>
+              <div className="platform-flow-badges" aria-label="Supported protocols and standards">
+                <span>MQTT</span>
+                <span>Modbus TCP</span>
+                <span>OPC-UA</span>
+                <span>TGO</span>
+                <span>ISO 14064/14067</span>
+              </div>
+            </div>
+            <div className="platform-flow-steps">
+              {[
+                {icon:"🏭",title:"Factory Source",desc:lang==="th"?"PLC, Meter, Sensor, Waste Scale, Excel":"PLC, meters, sensors, waste scales, Excel"},
+                {icon:"📡",title:"MQTT / Gateway",desc:lang==="th"?"ส่งข้อมูลหน้างานแบบ Real-time เข้าระบบกลาง":"Stream real-time field data into the platform"},
+                {icon:"🗄️",title:"Data Lake",desc:lang==="th"?"จัดเก็บ Activity Data พร้อมหลักฐานและ Audit Trail":"Store activity data, evidence, and audit trails"},
+                {icon:"📊",title:"Dashboard",desc:lang==="th"?"ดูพลังงาน น้ำ อากาศ ของเสีย และ GHG Hotspot":"Track energy, water, air, waste, and GHG hotspots"},
+                {icon:"✅",title:"Report",desc:lang==="th"?"สร้างรายงาน CFO, CFP, Eco Factory และ ESG":"Generate CFO, CFP, Eco Factory, and ESG reports"}
+              ].map(step => (
+                <div className="platform-step" key={step.title}>
+                  <div className="platform-step-icon">{step.icon}</div>
+                  <div className="platform-step-title">{step.title}</div>
+                  <div className="platform-step-desc">{step.desc}</div>
+                </div>
+              ))}
+            </div>
+            <div className="platform-flow-cta">
+              <p>{t.flow_cta}</p>
+              <button className="btn-accent" onClick={() => nav("env")}>{t.flow_button}</button>
+            </div>
           </div>
         </div>
       </section>
@@ -892,150 +2053,6 @@ function HomePage({ t, lang, nav, articles, slides }) {
         </div>
       </section>
 
-      {/* Mission */}
-      <section className="section" style={{background:"var(--gll)"}}>
-        <div className="container">
-          <div style={{textAlign:"center",marginBottom:48}}>
-            <span className="section-tag">● MISSION</span>
-            <h2 className="section-title">VERDIX Toward a Sustainable Future</h2>
-          </div>
-          <div className="grid-3">
-            {[
-              {icon:"🤝",title:"Eco-Expert On-Demand for Everyone",desc:lang==="th"?"เปิดโอกาสให้ทุกองค์กรเข้าถึงผู้เชี่ยวชาญด้านความยั่งยืนได้ง่ายและมีมาตรฐาน":"Open access to certified sustainability experts for every organization — easily and affordably."},
-              {icon:"📱",title:"Digitalize Assessment & Reporting",desc:lang==="th"?"ทำให้การประเมินและรายงานด้านความยั่งยืนเป็นระบบดิจิทัลที่โปร่งใส ลดภาระงาน และตรวจสอบได้":"Make sustainability assessment and reporting a transparent, verifiable, and burden-reducing digital system."},
-              {icon:"🌍",title:"Data-Driven Transformation",desc:lang==="th"?"สนับสนุนการเปลี่ยนผ่านองค์กรสู่ Net Zero และอนาคตที่ยั่งยืนด้วยข้อมูลและเทคโนโลยี":"Support organizations in transitioning to Net Zero and a truly sustainable future through data and technology."},
-            ].map(m => (
-              <div key={m.title} style={{textAlign:"center",padding:"32px 24px"}}>
-                <div style={{fontSize:40,marginBottom:16}}>{m.icon}</div>
-                <h3 style={{fontSize:18,color:"var(--g1)",marginBottom:12,fontFamily:"'Playfair Display',serif"}}>{m.title}</h3>
-                <p style={{color:"var(--muted)",fontSize:15,lineHeight:1.7}}>{m.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Platform Roadmap */}
-      <section className="section" style={{background:"var(--g1)",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",top:-60,right:-60,width:300,height:300,borderRadius:"50%",background:"rgba(82,183,136,.07)"}} />
-        <div style={{position:"absolute",bottom:-80,left:-40,width:240,height:240,borderRadius:"50%",background:"rgba(82,183,136,.05)"}} />
-        <div className="container" style={{position:"relative",zIndex:1}}>
-          <div style={{textAlign:"center",marginBottom:52}}>
-            <span style={{display:"block",color:"var(--ga)",fontSize:11,fontWeight:700,letterSpacing:2.5,textTransform:"uppercase",marginBottom:10}}>● PLATFORM ROADMAP</span>
-            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(26px,4vw,38px)",color:"#fff",marginBottom:14}}>
-              {lang==="th"?"เส้นทางสู่แพลตฟอร์มความยั่งยืนครบวงจร":"The Road to a Complete Sustainability Platform"}
-            </h2>
-            <p style={{color:"rgba(255,255,255,.6)",fontSize:16,maxWidth:560,margin:"0 auto"}}>
-              {lang==="th"?"จาก Expert-on-Demand สู่ Real-time IoT Carbon Intelligence":"From Expert-on-Demand to Real-time IoT Carbon Intelligence"}
-            </p>
-          </div>
-
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:0,position:"relative"}}>
-            {/* connector line */}
-            <div style={{position:"absolute",top:36,left:"17%",right:"17%",height:2,background:"linear-gradient(90deg,var(--ga),rgba(82,183,136,.3))",zIndex:0}} />
-
-            {[
-              {
-                phase:"Phase 1", status:"live", statusTh:"เปิดใช้งานแล้ว", statusEn:"Live Now",
-                icon:"🧑‍💼",
-                th:"Expert-on-Demand Platform",en:"Expert-on-Demand Platform",
-                color:"var(--ga)",
-                items:[
-                  lang==="th"?"Eco-Expert Marketplace":"Eco-Expert Marketplace",
-                  lang==="th"?"Sustainability Assessment (14 หมวด)":"Sustainability Assessment (14 categories)",
-                  lang==="th"?"Automated Reporting (TGO/GRI/ISO)":"Automated Reporting (TGO/GRI/ISO)",
-                  lang==="th"?"Eco-Factory Online Evaluation":"Eco-Factory Online Evaluation",
-                ]
-              },
-              {
-                phase:"Phase 2", status:"upcoming", statusTh:"กำลังพัฒนา", statusEn:"In Development",
-                icon:"🪙",
-                th:"Carbon Credit Integration",en:"Carbon Credit Integration",
-                color:"#FBBF24",
-                items:[
-                  lang==="th"?"Carbon Credit Marketplace (ซื้อ-ขาย)":"Carbon Credit Marketplace",
-                  lang==="th"?"Carbon Offset Project Registry":"Carbon Offset Project Registry",
-                  lang==="th"?"TGO / VCS / Gold Standard Verified":"TGO / VCS / Gold Standard Verified",
-                  lang==="th"?"Real-time Carbon Balance Dashboard":"Real-time Carbon Balance Dashboard",
-                ]
-              },
-              {
-                phase:"Phase 3", status:"future", statusTh:"แผนอนาคต", statusEn:"Future Roadmap",
-                icon:"📡",
-                th:"IoT Sensor & Data Intelligence",en:"IoT Sensor & Data Intelligence",
-                color:"#60A5FA",
-                items:[
-                  lang==="th"?"MQTT Broker Integration (Sensor → Cloud)":"MQTT Broker Integration (Sensor → Cloud)",
-                  lang==="th"?"REST API / Webhook สำหรับระบบโรงงาน":"REST API / Webhook for factory systems",
-                  lang==="th"?"Real-time Energy, Water, GHG Monitoring":"Real-time Energy, Water, GHG Monitoring",
-                  lang==="th"?"AI-driven Anomaly Detection & Alerts":"AI-driven Anomaly Detection & Alerts",
-                ]
-              },
-            ].map((p) => (
-              <div key={p.phase} style={{position:"relative",zIndex:1,padding:"0 16px"}}>
-                {/* Phase dot */}
-                <div style={{display:"flex",justifyContent:"center",marginBottom:20}}>
-                  <div style={{width:72,height:72,borderRadius:"50%",background:p.status==="live"?p.color:p.status==="upcoming"?"rgba(251,191,36,.15)":"rgba(96,165,250,.1)",border:`2px solid ${p.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>
-                    {p.icon}
-                  </div>
-                </div>
-                <div style={{background:p.status==="live"?"rgba(82,183,136,.12)":"rgba(255,255,255,.04)",border:`1px solid ${p.status==="live"?"rgba(82,183,136,.3)":"rgba(255,255,255,.1)"}`,borderRadius:"var(--r-lg)",padding:"24px 20px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-                    <span style={{fontSize:11,fontWeight:700,letterSpacing:1,color:p.color}}>{p.phase}</span>
-                    <span style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:20,background:p.status==="live"?"rgba(82,183,136,.2)":p.status==="upcoming"?"rgba(251,191,36,.15)":"rgba(96,165,250,.1)",color:p.color}}>
-                      {lang==="th"?p.statusTh:p.statusEn}
-                    </span>
-                  </div>
-                  <h3 style={{fontSize:16,fontWeight:700,color:"#fff",marginBottom:16,lineHeight:1.3}}>{lang==="th"?p.th:p.en}</h3>
-                  <ul style={{listStyle:"none",padding:0,margin:0}}>
-                    {p.items.map((item,j) => (
-                      <li key={j} style={{display:"flex",gap:8,alignItems:"flex-start",marginBottom:10,fontSize:13,color:"rgba(255,255,255,.65)",lineHeight:1.5}}>
-                        <span style={{color:p.color,flexShrink:0,marginTop:1}}>→</span>{item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* IoT Architecture Note */}
-          <div style={{marginTop:40,background:"rgba(255,255,255,.05)",border:"1px solid rgba(82,183,136,.2)",borderRadius:"var(--r)",padding:"20px 28px",display:"flex",gap:16,alignItems:"flex-start"}}>
-            <span style={{fontSize:24,flexShrink:0}}>📡</span>
-            <div>
-              <div style={{fontSize:14,fontWeight:700,color:"var(--ga)",marginBottom:6}}>
-                {lang==="th"?"IoT Data Pipeline Architecture (Phase 3)":"IoT Data Pipeline Architecture (Phase 3)"}
-              </div>
-              <div style={{fontSize:13,color:"rgba(255,255,255,.6)",lineHeight:1.7}}>
-                {lang==="th"
-                  ?"Sensor (PLC/IoT) → MQTT Broker → VERDIX Data Gateway → Real-time Dashboard → Carbon Calculation Engine → Automated Report & Carbon Credit"
-                  :"Sensor (PLC/IoT) → MQTT Broker → VERDIX Data Gateway → Real-time Dashboard → Carbon Calculation Engine → Automated Report & Carbon Credit"}
-                <span style={{display:"block",marginTop:6,color:"rgba(255,255,255,.4)",fontSize:12}}>
-                  {lang==="th"?"รองรับโปรโตคอล: MQTT v3.1/v5, REST API, Modbus TCP, OPC-UA, Webhook":"Supported protocols: MQTT v3.1/v5, REST API, Modbus TCP, OPC-UA, Webhook"}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Trust Bar */}
-      <div className="trust-bar">
-        <div className="container">
-          <div style={{display:"flex",justifyContent:"center",gap:48,flexWrap:"wrap"}}>
-            {[
-              {icon:"✅",th:"รับรองโดย อบก. (TGO)",en:"TGO Certified Platform"},
-              {icon:"🏭",th:"โรงงานกว่า 500 แห่งไว้วางใจ",en:"Trusted by 500+ Factories"},
-              {icon:"👥",th:"ผู้เชี่ยวชาญ 120+ คน",en:"120+ Certified Experts"},
-              {icon:"🔒",th:"ข้อมูลปลอดภัย SSL/TLS",en:"Secure SSL/TLS Data"},
-              {icon:"🇹🇭",th:"พัฒนาสำหรับไทยโดยเฉพาะ",en:"Built for Thailand Standards"},
-            ].map(t=>(
-              <div key={t.th} className="trust-item"><span>{t.icon}</span>{lang==="th"?t.th:t.en}</div>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* Testimonial Section */}
       <section className="section" style={{background:"var(--gll)"}}>
         <div className="container">
@@ -1046,12 +2063,12 @@ function HomePage({ t, lang, nav, articles, slides }) {
           </div>
           <div className="grid-3">
             {[
-              {avatar:"👨‍💼",name:"คุณสมศักดิ์ วิริยะ",org_th:"ผู้จัดการฝ่าย EHS — โรงงานยานยนต์ ระยอง",org_en:"EHS Manager — Automotive Factory, Rayong",text_th:"VERDIX ช่วยให้เราเตรียมเอกสาร Eco-Factory ได้ภายใน 2 สัปดาห์ แทนที่จะใช้ 3 เดือนเหมือนก่อน ระบบประเมินออนไลน์ละเอียดมาก",text_en:"VERDIX helped us prepare Eco-Factory documents in 2 weeks instead of the usual 3 months. The online assessment system is incredibly detailed.",stars:5},
-              {avatar:"👩‍🔬",name:"ดร. วราภรณ์ สุริยา",org_th:"นักวิชาการสิ่งแวดล้อม — อุตสาหกรรมอาหาร",org_en:"Environmental Scientist — Food Industry",text_th:"ระบบคำนวณ CFO ของ VERDIX แม่นยำมาก ช่วยระบุ Hotspot ได้ชัดเจน ทำให้เราวางแผนลด GHG ได้ตรงจุด ประหยัดต้นทุนได้จริง",text_en:"VERDIX's CFO calculator is very accurate. It clearly identifies hotspots, enabling targeted GHG reduction planning with real cost savings.",stars:5},
-              {avatar:"👨‍🏭",name:"คุณประภัสสร ตั้งมั่น",org_th:"ผู้อำนวยการโรงงาน — อุตสาหกรรมปิโตรเคมี",org_en:"Factory Director — Petrochemical Industry",text_th:"Expert-on-Demand ของ VERDIX ดีมาก ได้ผู้เชี่ยวชาญที่ตรงสาขามาช่วยภายใน 24 ชั่วโมง ราคาโปร่งใส ไม่มีค่าใช้จ่ายซ่อน",text_en:"VERDIX's Expert-on-Demand is excellent. Got a matching specialist within 24 hours. Transparent pricing with no hidden costs.",stars:5},
-              {avatar:"👩‍💼",name:"คุณนภาพร จันทร์ดี",org_th:"CSR Manager — กลุ่มธุรกิจโรงแรม",org_en:"CSR Manager — Hotel Group",text_th:"ใช้ VERDIX ทำรายงาน ESG ส่งผู้ถือหุ้น ระบบ Automated Reporting ช่วยลดเวลาจาก 2 เดือนเหลือแค่ 3 วัน แม่นยำและมีมาตรฐาน",text_en:"Used VERDIX for ESG reporting to shareholders. Automated Reporting reduced time from 2 months to just 3 days — accurate and standardized.",stars:5},
-              {avatar:"👨‍💻",name:"คุณเอกชัย รุ่งโรจน์",org_th:"Operations Director — SME อิเล็กทรอนิกส์",org_en:"Operations Director — Electronics SME",text_th:"สมัคร Green Industry ผ่าน VERDIX สะดวกมาก มีผู้เชี่ยวชาญดูแลตลอด ได้ระดับ GI 2 ภายใน 4 เดือน ลูกค้าต่างประเทศประทับใจมาก",text_en:"Applying for Green Industry through VERDIX was seamless. Expert guidance throughout. Achieved GI Level 2 in 4 months. International clients are very impressed.",stars:5},
-              {avatar:"👩‍🏫",name:"รศ.ดร. พิมพ์ใจ ชาญชัย",org_th:"อาจารย์วิศวกรรมสิ่งแวดล้อม — มหาวิทยาลัยเทคโนโลยี",org_en:"Environmental Engineering Lecturer — Technology University",text_th:"แนะนำ VERDIX ให้นักศึกษาใช้ฝึกประเมิน Carbon Footprint เครื่องมือใช้ง่าย เนื้อหาตรงมาตรฐาน TGO/ISO ครบถ้วน",text_en:"Recommend VERDIX for students to practice Carbon Footprint assessment. Easy to use, content fully aligned with TGO/ISO standards.",stars:5},
+              {avatar:"👨‍💼",name:"ผู้จัดการฝ่าย EHS",org_th:"ผู้จัดการฝ่าย EHS — โรงงานยานยนต์ ระยอง",org_en:"EHS Manager — Automotive Factory, Rayong",text_th:"VERDIX ช่วยให้เราเตรียมเอกสาร Eco-Factory ได้ภายใน 2 สัปดาห์ แทนที่จะใช้ 3 เดือนเหมือนก่อน ระบบประเมินออนไลน์ละเอียดมาก",text_en:"VERDIX helped us prepare Eco-Factory documents in 2 weeks instead of the usual 3 months. The online assessment system is incredibly detailed.",stars:5},
+              {avatar:"👩‍🔬",name:"ทีมสิ่งแวดล้อม",org_th:"นักวิชาการสิ่งแวดล้อม — อุตสาหกรรมอาหาร",org_en:"Environmental Scientist — Food Industry",text_th:"ระบบคำนวณ CFO ของ VERDIX แม่นยำมาก ช่วยระบุ Hotspot ได้ชัดเจน ทำให้เราวางแผนลด GHG ได้ตรงจุด ประหยัดต้นทุนได้จริง",text_en:"VERDIX's CFO calculator is very accurate. It clearly identifies hotspots, enabling targeted GHG reduction planning with real cost savings.",stars:5},
+              {avatar:"👨‍🏭",name:"ผู้บริหารโรงงาน",org_th:"ผู้อำนวยการโรงงาน — อุตสาหกรรมปิโตรเคมี",org_en:"Factory Director — Petrochemical Industry",text_th:"Expert-on-Demand ของ VERDIX ดีมาก ได้ผู้เชี่ยวชาญที่ตรงสาขามาช่วยภายใน 24 ชั่วโมง ราคาโปร่งใส ไม่มีค่าใช้จ่ายซ่อน",text_en:"VERDIX's Expert-on-Demand is excellent. Got a matching specialist within 24 hours. Transparent pricing with no hidden costs.",stars:5},
+              {avatar:"👩‍💼",name:"ผู้จัดการฝ่าย CSR",org_th:"CSR Manager — กลุ่มธุรกิจโรงแรม",org_en:"CSR Manager — Hotel Group",text_th:"ใช้ VERDIX ทำรายงาน ESG ส่งผู้ถือหุ้น ระบบ Automated Reporting ช่วยลดเวลาจาก 2 เดือนเหลือแค่ 3 วัน แม่นยำและมีมาตรฐาน",text_en:"Used VERDIX for ESG reporting to shareholders. Automated Reporting reduced time from 2 months to just 3 days — accurate and standardized.",stars:5},
+              {avatar:"👨‍💻",name:"ผู้อำนวยการฝ่ายปฏิบัติการ",org_th:"Operations Director — SME อิเล็กทรอนิกส์",org_en:"Operations Director — Electronics SME",text_th:"สมัคร Green Industry ผ่าน VERDIX สะดวกมาก มีผู้เชี่ยวชาญดูแลตลอด ได้ระดับ GI 2 ภายใน 4 เดือน ลูกค้าต่างประเทศประทับใจมาก",text_en:"Applying for Green Industry through VERDIX was seamless. Expert guidance throughout. Achieved GI Level 2 in 4 months. International clients are very impressed.",stars:5},
+              {avatar:"👩‍🏫",name:"อาจารย์ด้านสิ่งแวดล้อม",org_th:"อาจารย์วิศวกรรมสิ่งแวดล้อม — มหาวิทยาลัยเทคโนโลยี",org_en:"Environmental Engineering Lecturer — Technology University",text_th:"แนะนำ VERDIX ให้นักศึกษาใช้ฝึกประเมิน Carbon Footprint เครื่องมือใช้ง่าย เนื้อหาตรงมาตรฐาน TGO/ISO ครบถ้วน",text_en:"Recommend VERDIX for students to practice Carbon Footprint assessment. Easy to use, content fully aligned with TGO/ISO standards.",stars:5},
             ].map((t,i)=>(
               <div key={i} className="testi-card">
                 <div className="testi-quote">&quot;</div>
@@ -1098,6 +2115,337 @@ function HomePage({ t, lang, nav, articles, slides }) {
 }
 
 // ─── Blog Page ────────────────────────────────────────────────
+function AboutPage({ lang, nav }) {
+  const L = (th, en) => lang === "th" ? th : en;
+  const challengeItems = [
+    L("ขาดความรู้และความเข้าใจด้าน ESG, Carbon Footprint และ Net Zero", "Limited internal ESG, Carbon Footprint, and Net Zero knowledge"),
+    L("ไม่มั่นใจในการดำเนินงานด้วยตนเองและการเข้าถึงผู้เชี่ยวชาญมีต้นทุนสูง", "Uncertainty in execution and high expert-access costs"),
+    L("ขาดเครื่องมือดิจิทัลในการเก็บข้อมูล วิเคราะห์ผล และจัดทำรายงาน", "Lack of digital tools for data collection, analysis, and reporting"),
+  ];
+  const featureBlocks = [
+    {
+      title: "Eco-Expert Pool",
+      image: "/about-verdix-expert-pool.webp",
+      desc: L(
+        "เครือข่ายผู้เชี่ยวชาญด้านความยั่งยืนจากภาคอุตสาหกรรม นักวิชาการ มหาวิทยาลัย และบริษัทที่ปรึกษา ครอบคลุม Carbon Footprint, LCA, Energy Efficiency, Waste Management, Eco-Factory, Green Industry, ESG Reporting, ISO 14000 Series และ Net Zero Roadmap",
+        "A sustainability expert network from industry, academia, universities, and consulting firms covering Carbon Footprint, LCA, Energy Efficiency, Waste Management, Eco-Factory, Green Industry, ESG Reporting, ISO 14000 Series, and Net Zero Roadmap."
+      )
+    },
+    {
+      title: "Sustainability Assessment Engine",
+      image: "/about-verdix-assessment-dashboard.webp",
+      desc: L(
+        "ระบบประเมินออนไลน์ที่ช่วยให้องค์กรเห็นสถานะปัจจุบันได้รวดเร็ว รองรับ Eco-Factory, Green Industry, ESG, CFO, CFP, Energy Efficiency, Waste Management และ Net Zero Roadmap พร้อม Digital Checklist, Gap Analysis และ Action Plan Recommendation",
+        "An online assessment engine that quickly shows current readiness across Eco-Factory, Green Industry, ESG, CFO, CFP, Energy Efficiency, Waste Management, and Net Zero Roadmap with Digital Checklist, Gap Analysis, and Action Plan Recommendation."
+      )
+    },
+    {
+      title: "Automated Sustainability Reporting",
+      image: "/about-verdix-sustainability-platform.webp",
+      desc: L(
+        "ระบบจัดทำรายงานอัตโนมัติที่เชื่อมโยงข้อมูลพลังงาน น้ำ ของเสีย และคาร์บอน เพื่อแปลงเป็นรายงาน CFO, CFP, ESG, Sustainability Report, Eco-Factory Report, Green Industry Report, Energy Performance Report และ Waste Efficiency Report",
+        "Automated reporting that connects energy, water, waste, and carbon data into CFO, CFP, ESG, Sustainability Report, Eco-Factory Report, Green Industry Report, Energy Performance Report, and Waste Efficiency Report outputs."
+      )
+    }
+  ];
+  const benefitGroups = [
+    {
+      title: L("เพิ่มประสิทธิภาพการดำเนินงาน", "Operational Efficiency"),
+      items: [
+        L("ลดเวลาเก็บรวบรวมข้อมูลมากกว่า 50%", "Reduce data collection time by more than 50%"),
+        L("ประเมินความพร้อม Eco-Factory ได้ภายใน 1-2 วัน", "Assess Eco-Factory readiness within 1-2 days"),
+        L("ลดภาระงานเอกสารและการจัดทำรายงาน", "Reduce paperwork and reporting workload"),
+      ]
+    },
+    {
+      title: L("ยกระดับมาตรฐานองค์กร", "Standards Readiness"),
+      items: [
+        L("เตรียมพร้อมสำหรับการตรวจประเมินจากภาครัฐ", "Prepare for official assessments"),
+        L("สนับสนุนการขอรับรอง Green Industry", "Support Green Industry certification"),
+        L("สร้าง Net Zero Roadmap ที่ชัดเจน", "Build a clear Net Zero Roadmap"),
+      ]
+    },
+    {
+      title: L("เพิ่มขีดความสามารถทางการแข่งขัน", "Competitive Advantage"),
+      items: [
+        L("ลดต้นทุนด้านพลังงานและทรัพยากร", "Reduce energy and resource costs"),
+        L("เพิ่มโอกาสทางการตลาดและการส่งออก", "Increase market and export opportunities"),
+        L("ตอบสนองความต้องการด้าน ESG ของลูกค้าและนักลงทุน", "Meet ESG expectations from customers and investors"),
+      ]
+    }
+  ];
+  const marketDrivers = [
+    "Net Zero",
+    "Climate Change Act",
+    L("ภาษีคาร์บอน", "Carbon Tax"),
+    "Eco-Factory",
+    "Green Industry",
+    "ESG Report",
+    "CFO / CFP"
+  ];
+
+  return (
+    <>
+      <section className="page-hdr">
+        <div className="container">
+          <span className="section-tag">● VERDIX GREEN</span>
+          <h1>{L("verdiX: แพลตฟอร์มผู้เชี่ยวชาญด้านความยั่งยืนครบวงจร", "verdiX: Integrated Sustainability Expert Platform")}</h1>
+          <p>
+            {L(
+              "เพื่อขับเคลื่อนองค์กรสู่ Net Zero และ ESG อย่างเป็นระบบ ด้วยผู้เชี่ยวชาญ เทคโนโลยี AI ระบบประเมิน และรายงานด้านสิ่งแวดล้อมในที่เดียว",
+              "Helping organizations move toward Net Zero and ESG systematically through experts, AI technology, assessment systems, and environmental reporting in one place."
+            )}
+          </p>
+          <div className="about-hero-article">
+            <h2>
+              {L(
+                "เมื่อความยั่งยืนไม่ใช่ทางเลือก แต่เป็นข้อกำหนดใหม่ของธุรกิจ",
+                "When Sustainability Is No Longer Optional, but a New Business Requirement"
+              )}
+            </h2>
+            <p>
+              {L(
+                "ปัจจุบัน ความยั่งยืน (Sustainability) ได้กลายเป็นหนึ่งในปัจจัยสำคัญที่ส่งผลต่อความสามารถในการแข่งขันขององค์กรทั่วโลก ไม่ว่าจะเป็นข้อกำหนดด้าน ESG (Environmental, Social and Governance) เป้าหมาย Net Zero Carbon Emission ภายในปี 2050 ของประเทศไทย หรือกฎหมายและมาตรฐานด้านสิ่งแวดล้อมที่กำลังเข้มงวดขึ้นอย่างต่อเนื่อง",
+                "Sustainability has become a core factor in global competitiveness. Organizations now face ESG requirements, Thailand's Net Zero Carbon Emission target by 2050, and increasingly strict environmental laws and standards."
+              )}
+            </p>
+            <p>
+              {L(
+                "องค์กรจำนวนมากต้องเผชิญกับความท้าทายในการจัดทำบัญชีก๊าซเรือนกระจก การประเมิน Eco-Factory การจัดทำรายงานความยั่งยืน การเพิ่มประสิทธิภาพการใช้พลังงาน และการบริหารจัดการทรัพยากรอย่างมีประสิทธิภาพ ขณะที่การเข้าถึงผู้เชี่ยวชาญเฉพาะทางยังมีข้อจำกัดทั้งด้านเวลา งบประมาณ และความพร้อมของบุคลากรภายในองค์กร",
+                "Many organizations must manage greenhouse gas accounting, Eco-Factory assessment, sustainability reporting, energy efficiency improvement, and resource management while access to specialized experts remains limited by time, budget, and internal capability."
+              )}
+            </p>
+            <p>
+              {L(
+                "ด้วยเหตุนี้ จึงเกิดแนวคิดของ verdiX แพลตฟอร์มดิจิทัลที่รวมผู้เชี่ยวชาญด้านความยั่งยืน เทคโนโลยี AI และระบบประเมินมาตรฐานด้านสิ่งแวดล้อมไว้ในที่เดียว เพื่อช่วยให้องค์กรสามารถเริ่มต้น พัฒนา และตรวจสอบการดำเนินงานด้านความยั่งยืนได้อย่างเป็นระบบ",
+                "This is why verdiX was created: a digital platform that brings sustainability experts, AI technology, and environmental assessment systems together in one place so organizations can start, improve, and verify sustainability work systematically."
+              )}
+            </p>
+            <h3>{L("verdiX คืออะไร?", "What is verdiX?")}</h3>
+            <p>
+              {L(
+                "verdiX คือ Sustainability Expert-on-Demand Platform หรือแพลตฟอร์มผู้เชี่ยวชาญด้านความยั่งยืนแบบครบวงจร ที่เชื่อมโยงองค์ความรู้จากผู้เชี่ยวชาญจริงเข้ากับระบบดิจิทัลอัจฉริยะ",
+                "verdiX is a Sustainability Expert-on-Demand Platform that connects real expert knowledge with intelligent digital systems."
+              )}
+            </p>
+            <p>
+              {L(
+                "แพลตฟอร์มถูกออกแบบมาเพื่อเป็นศูนย์กลางสำหรับองค์กร ภาคอุตสาหกรรม โรงงาน และธุรกิจที่ต้องการยกระดับมาตรฐานด้านสิ่งแวดล้อม ลดการปล่อยก๊าซเรือนกระจก และเตรียมความพร้อมสู่การดำเนินงานตามแนวทาง ESG และ Net Zero",
+                "The platform is designed as a central hub for organizations, industrial sectors, factories, and businesses that want to raise environmental standards, reduce greenhouse gas emissions, and prepare for ESG and Net Zero operations."
+              )}
+            </p>
+            <p>{L("verdiX ผสานการทำงานระหว่าง", "verdiX brings together")}</p>
+            <ul>
+              <li>{L("ผู้เชี่ยวชาญด้านความยั่งยืน (Experts)", "Sustainability experts")}</li>
+              <li>{L("ระบบประเมินมาตรฐานสิ่งแวดล้อม (Assessment Engine)", "Environmental standards assessment engine")}</li>
+              <li>{L("AI และ Digital Workflow", "AI and digital workflow")}</li>
+              <li>{L("ระบบจัดทำรายงานอัตโนมัติ (Automated Reporting)", "Automated reporting system")}</li>
+            </ul>
+            <p>
+              {L(
+                "เพื่อช่วยให้องค์กรสามารถดำเนินงานได้อย่างถูกต้อง แม่นยำ และตรวจสอบได้",
+                "so organizations can work accurately, systematically, and with clear auditability."
+              )}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="container">
+          <div className="about-split">
+            <div className="card" style={{padding:34}}>
+              <span className="section-tag">● WHY VERDIX</span>
+              <h2 className="section-title" style={{fontSize:34,marginTop:10}}>
+                {L("Verdify Your Journey Toward a Sustainable Future", "Verdify Your Journey Toward a Sustainable Future")}
+              </h2>
+              <p style={{color:"var(--muted)",fontSize:16,lineHeight:1.85,marginBottom:18}}>
+                {L(
+                  "หรือการเปลี่ยนผ่านสู่อนาคตที่ยั่งยืนด้วยข้อมูล เทคโนโลยี และองค์ความรู้จากผู้เชี่ยวชาญตัวจริง",
+                  "A journey toward a sustainable future powered by data, technology, and practical knowledge from real experts."
+                )}
+              </p>
+              <p style={{color:"var(--muted)",fontSize:16,lineHeight:1.85}}>
+                {L(
+                  "เพราะความยั่งยืนไม่ควรเป็นเพียงรายงานที่ต้องจัดทำ แต่ควรเป็นเครื่องมือสำคัญในการสร้างความสามารถในการแข่งขันและการเติบโตอย่างมั่นคงขององค์กรในระยะยาว",
+                  "Sustainability should not be just another report. It should become a strategic tool for building competitiveness and stable long-term organizational growth."
+                )}
+              </p>
+            </div>
+
+            <div className="card" style={{padding:28,background:"linear-gradient(135deg,#10281e,#1B4332)",color:"#fff"}}>
+              <img className="about-card-image" src="/about-verdix-sustainability-platform.webp" alt="verdiX sustainability platform" loading="lazy" />
+              <span style={{display:"inline-flex",fontSize:12,fontWeight:900,color:"var(--ga)",letterSpacing:1.4,textTransform:"uppercase",marginBottom:14}}>VERDIFY YOUR JOURNEY</span>
+              <h3 style={{fontFamily:"'Playfair Display',serif",fontSize:32,lineHeight:1.18,marginBottom:14}}>
+                {L("เปลี่ยนผ่านสู่อนาคตที่ยั่งยืนด้วยข้อมูล เทคโนโลยี และผู้เชี่ยวชาญตัวจริง", "Move toward a sustainable future with data, technology, and real experts")}
+              </h3>
+              <p style={{color:"rgba(255,255,255,.74)",fontSize:15,lineHeight:1.8,marginBottom:22}}>
+                {L(
+                  "เพราะความยั่งยืนไม่ควรเป็นเพียงรายงานที่ต้องจัดทำ แต่ควรเป็นเครื่องมือสำคัญในการสร้างความสามารถในการแข่งขันและการเติบโตระยะยาว",
+                  "Sustainability should not be just another report. It should become a tool for competitiveness and long-term growth."
+                )}
+              </p>
+              <button className="btn-accent" style={{padding:"11px 22px",fontSize:14}} onClick={() => nav("experts")}>
+                {L("ปรึกษาผู้เชี่ยวชาญ", "Consult Experts")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="section" style={{background:"#F7FBF8"}}>
+        <div className="container">
+          <div className="section-head">
+            <div>
+              <span className="section-tag">● WHAT WE SOLVE</span>
+              <h2 className="section-title">{L("ความท้าทายที่องค์กรกำลังเผชิญ", "Challenges Organizations Face")}</h2>
+            </div>
+            <p className="section-sub">
+              {L(
+                "หลายองค์กรตระหนักถึงความสำคัญของความยั่งยืนแล้ว แต่การลงมือปฏิบัติจริงยังซับซ้อน โดยเฉพาะในภาคอุตสาหกรรม",
+                "Many organizations understand sustainability, but implementation remains complex, especially in industrial operations."
+              )}
+            </p>
+          </div>
+          <div className="grid-3">
+            {challengeItems.map((item, idx) => (
+              <div className="card" key={item} style={{padding:24}}>
+                <div style={{width:38,height:38,borderRadius:10,background:"#ECFDF5",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--g2)",fontWeight:900,marginBottom:14}}>
+                  {idx + 1}
+                </div>
+                <p style={{color:"var(--text)",fontSize:15,lineHeight:1.75,fontWeight:700}}>{item}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="container">
+          <div className="section-head">
+            <div>
+              <span className="section-tag">● PLATFORM HIGHLIGHTS</span>
+              <h2 className="section-title">{L("จุดเด่นของ verdiX", "verdiX Highlights")}</h2>
+            </div>
+          </div>
+          <div style={{display:"grid",gap:18}}>
+            {featureBlocks.map((block, idx) => (
+              <div className="card about-feature-row" key={block.title} style={{padding:26}}>
+                <div>
+                  <span className="badge">0{idx + 1}</span>
+                  <h3 style={{fontFamily:"'DM Sans',sans-serif",fontSize:20,color:"var(--g1)",marginTop:12}}>{block.title}</h3>
+                </div>
+                <img className="about-feature-image" src={block.image} alt={block.title} loading="lazy" />
+                <p style={{color:"var(--muted)",fontSize:15,lineHeight:1.85}}>{block.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="section" style={{background:"#F7FBF8"}}>
+        <div className="container">
+          <div className="section-head">
+            <div>
+              <span className="section-tag">● BENEFITS</span>
+              <h2 className="section-title">{L("ประโยชน์ที่องค์กรจะได้รับ", "Benefits for Organizations")}</h2>
+            </div>
+          </div>
+          <img className="about-wide-image" src="/about-verdix-workshop.webp" alt="verdiX sustainability workshop" loading="lazy" />
+          <div className="grid-3">
+            {benefitGroups.map(group => (
+              <div className="card" key={group.title} style={{padding:26}}>
+                <h3 style={{fontFamily:"'DM Sans',sans-serif",fontSize:19,color:"var(--g1)",marginBottom:14}}>{group.title}</h3>
+                <ul style={{display:"grid",gap:10,paddingLeft:18,color:"var(--muted)",fontSize:14,lineHeight:1.7}}>
+                  {group.items.map(item => <li key={item}>{item}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="container">
+          <div className="card" style={{padding:32}}>
+            <div className="about-market">
+              <div>
+                <span className="section-tag">● MARKET OPPORTUNITY</span>
+                <h2 className="section-title" style={{fontSize:32,marginTop:10}}>
+                  {L("โอกาสทางตลาดที่กำลังเติบโต", "A Growing Sustainability Market")}
+                </h2>
+                <p style={{color:"var(--muted)",fontSize:16,lineHeight:1.85}}>
+                  {L(
+                    "ประเทศไทยมีโรงงานอุตสาหกรรมมากกว่า 70,000 แห่ง และองค์กรขนาดกลางถึงขนาดใหญ่ที่เกี่ยวข้องกับการจัดการคาร์บอนอีกนับหมื่นแห่ง ซึ่งเป็นโอกาสสำคัญของแพลตฟอร์มดิจิทัลด้านความยั่งยืน",
+                    "Thailand has more than 70,000 industrial factories and tens of thousands of medium-to-large organizations involved in carbon management, creating strong demand for sustainability digital platforms."
+                  )}
+                </p>
+              </div>
+              <div>
+                <img className="about-market-image" src="/about-verdix-market-size.webp" alt="Thailand and ASEAN sustainability market size" loading="lazy" />
+                <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+                  {marketDrivers.map(item => <span className="badge" key={item}>{item}</span>)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+  const pillars = [
+    {
+      title: L("แพลตฟอร์มสิ่งแวดล้อมสำหรับโรงงาน", "Environmental Platform for Factories"),
+      desc: L("รวม Eco Factory, CFO, CFP, ESG, IoT Monitoring และรายงานมาตรฐานไว้ในที่เดียว", "Combines Eco Factory, CFO, CFP, ESG, IoT monitoring, and standards-ready reporting in one place."),
+    },
+    {
+      title: L("ผู้เชี่ยวชาญตัวจริง", "Verified Expert Network"),
+      desc: L("เชื่อมองค์กรกับผู้เชี่ยวชาญด้านสิ่งแวดล้อม คาร์บอน และความยั่งยืนตามโจทย์งานจริง", "Connects organizations with environmental, carbon, and sustainability specialists matched to real operational needs."),
+    },
+    {
+      title: L("ข้อมูลที่นำไปใช้ได้", "Actionable Data"),
+      desc: L("เปลี่ยนข้อมูลหน้างานเป็น Dashboard, Gap Analysis, Action Plan และรายงานที่ตรวจสอบย้อนหลังได้", "Turns field data into dashboards, gap analysis, action plans, and auditable reports."),
+    },
+  ];
+
+  return (
+    <>
+      <section className="page-hdr">
+        <div className="container">
+          <span className="section-tag">● VERDIX GREEN</span>
+          <h1>{L("เกี่ยวกับเรา", "About Us")}</h1>
+          <p>{L("VerdiX Green คือแพลตฟอร์ม Sustainability Expert-on-Demand ที่ช่วยให้องค์กรและโรงงานจัดการข้อมูลสิ่งแวดล้อม คาร์บอน และการรับรองมาตรฐานได้เป็นระบบ", "VerdiX Green is a Sustainability Expert-on-Demand platform helping organizations and factories manage environmental data, carbon accounting, and certification workflows systematically.")}</p>
+        </div>
+      </section>
+      <section className="section">
+        <div className="container">
+          <div style={{display:"grid",gridTemplateColumns:"1.05fr .95fr",gap:40,alignItems:"start"}}>
+            <div className="card" style={{padding:32}}>
+              <span className="section-tag">● OUR MISSION</span>
+              <h2 className="section-title" style={{fontSize:34,marginTop:10}}>{L("ทำให้ความยั่งยืนเป็นงานที่วัดผลได้", "Make Sustainability Measurable")}</h2>
+              <p style={{color:"var(--muted)",fontSize:16,lineHeight:1.8,marginBottom:22}}>
+                {L(
+                  "เราออกแบบ VerdiX เพื่อช่วยลดช่องว่างระหว่างข้อมูลหน้างาน ผู้เชี่ยวชาญ และมาตรฐานการรายงาน ไม่ว่าจะเป็น Eco Factory, CFO, CFP, ESG, Net Zero หรือระบบ IoT สำหรับโรงงาน",
+                  "We built VerdiX to bridge field data, experts, and reporting standards across Eco Factory, CFO, CFP, ESG, Net Zero, and factory IoT workflows."
+                )}
+              </p>
+              <button className="btn btn-dark" onClick={() => nav("experts")}>{L("คุยกับผู้เชี่ยวชาญ", "Talk to an Expert")}</button>
+            </div>
+            <div style={{display:"grid",gap:14}}>
+              {pillars.map((item) => (
+                <div className="card" key={item.title} style={{padding:22}}>
+                  <h3 style={{fontFamily:"'DM Sans',sans-serif",fontSize:18,color:"var(--g1)",marginBottom:8}}>{item.title}</h3>
+                  <p style={{color:"var(--muted)",fontSize:14,lineHeight:1.7}}>{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
 function BlogPage({ t, lang, nav, articles }) {
   const [filter,setFilter] = useState("all");
   const [q,setQ] = useState("");
@@ -1132,26 +2480,855 @@ function BlogPage({ t, lang, nav, articles }) {
   );
 }
 
+function DownloadsPage({ lang, documents }) {
+  const [filter,setFilter] = useState("All");
+  const [q,setQ] = useState("");
+  const [selectedFolder,setSelectedFolder] = useState(null);
+  const L = (th,en) => lang==="th"?th:en;
+  const visibleDocs = (documents || [])
+    .filter(d => d.active !== false)
+    .filter(d => filter === "All" || d.category === filter)
+    .filter(d => {
+      const hay = [d.title_th,d.title_en,d.description_th,d.description_en,d.category,d.file_name].join(" ").toLowerCase();
+      return !q || hay.includes(q.toLowerCase());
+    });
+  const docIcon = (doc) => {
+    const type = (doc.file_type || doc.file_name || "").toLowerCase();
+    return type.includes("folder") ? "" : "";
+  };
+  const isFolder = (doc) => (doc.file_type || "").toLowerCase().includes("folder");
+  const folderFiles = selectedFolder ? (DOWNLOAD_FOLDER_FILES[selectedFolder.id] || []) : [];
+
+  if (selectedFolder) {
+    return (
+      <section className="section">
+        <div className="container">
+          <div className="doc-detail-head">
+            <button className="doc-back" onClick={() => setSelectedFolder(null)}>
+              {L("ย้อนกลับ เอกสารดาวน์โหลด","Back to Downloads")}
+            </button>
+            <h1 className="doc-detail-title">{L(selectedFolder.title_th, selectedFolder.title_en)}</h1>
+          </div>
+          <div className="doc-table-wrap">
+            <table className="doc-file-table">
+              <thead>
+                <tr>
+                  <th>{L("ชื่อเอกสาร","Document Name")}</th>
+                  <th className="doc-file-type">{L("ประเภทไฟล์","File Type")}</th>
+                  <th className="doc-file-action">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(folderFiles.length ? folderFiles : [{
+                  name_th:L(selectedFolder.title_th, selectedFolder.title_en),
+                  name_en:L(selectedFolder.title_th, selectedFolder.title_en),
+                  file_type:(selectedFolder.file_type || "file").toLowerCase(),
+                  file_url:docHref(selectedFolder),
+                  file_name:selectedFolder.file_name
+                }]).map((file,index) => {
+                  const href = file.file_url || "#";
+                  const local = href.startsWith("/");
+                  return (
+                    <tr key={`${file.name_en}-${index}`}>
+                      <td className="doc-file-name">{index + 1}. {L(file.name_th, file.name_en)}</td>
+                      <td className="doc-file-type">{file.file_type || "file"}</td>
+                      <td className="doc-file-action">
+                        <a className="btn-accent" href={href} download={local ? (file.file_name || true) : undefined} target={local ? undefined : "_blank"} rel="noreferrer">
+                          Download File
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <>
+      <section className="download-hero">
+        <div className="container">
+          <span className="section-tag">● DOWNLOAD CENTER</span>
+          <h1>{L("ดาวน์โหลดเอกสาร","Document Download Center")}</h1>
+          <p>{L("รวมเอกสาร แบบฟอร์ม Checklist คู่มือมาตรฐาน และ Template สำหรับงาน Eco Factory, CFO, CFP, ESG และระบบ IoT/MQTT ของโรงงาน","A central library for forms, checklists, standards, and templates for Eco Factory, CFO, CFP, ESG, and factory IoT/MQTT workflows.")}</p>
+        </div>
+      </section>
+      <section className="section">
+        <div className="container">
+          <div className="download-tools">
+            <div className="search-wrap">
+              <input className="search-inp" value={q} onChange={e=>setQ(e.target.value)} placeholder={L("ค้นหาเอกสาร...","Search documents...")} />
+            </div>
+            <div className="filters">
+              {DOC_CATEGORIES.map(c => (
+                <button key={c} className={`filter-btn ${filter===c?"active":""}`} onClick={()=>setFilter(c)}>{c==="All"?L("ทั้งหมด","All"):c}</button>
+              ))}
+            </div>
+          </div>
+          {visibleDocs.length === 0 ? (
+            <p style={{textAlign:"center",color:"var(--muted)",padding:42}}>{L("ไม่พบเอกสาร","No documents found.")}</p>
+          ) : (
+            <div className="download-grid">
+              {visibleDocs.map(doc => {
+                const href = docHref(doc);
+                const disabled = href === "#";
+                return (
+                  <article className={`doc-card ${(doc.file_type || "").toLowerCase().includes("folder") ? "folder" : ""}`} key={doc.id}>
+                    <div className="doc-head">
+                      <h3 className="doc-title">{L(doc.title_th, doc.title_en)}</h3>
+                    </div>
+                    <div className="doc-visual">
+                      <div className="doc-icon">{docIcon(doc)}</div>
+                    </div>
+                    <p className="doc-desc">{L(doc.description_th, doc.description_en)}</p>
+                    <div className="doc-meta" style={{display:"none"}}>
+                      <span>{doc.category || "Document"}</span>
+                      <span>{doc.file_type || "FILE"}</span>
+                      <span>{formatDocSize(doc.file_size)}</span>
+                      {doc.version && <span>v{doc.version}</span>}
+                    </div>
+                    <div className="doc-actions">
+                      {isFolder(doc) ? (
+                        <button className="btn-accent" onClick={() => setSelectedFolder(doc)} style={{opacity:disabled ? .45 : 1}}>
+                          {L("ดูไฟล์ทั้งหมด","View All Files")}
+                        </button>
+                      ) : (
+                        <a className="btn-accent" href={href} download={doc.file_data_url || href.startsWith("/") ? (doc.file_name || true) : undefined} target={doc.file_data_url || href.startsWith("/") ? undefined : "_blank"} rel="noreferrer" style={{pointerEvents:disabled ? "none" : "auto",opacity:disabled ? .45 : 1,textDecoration:"none"}}>
+                          {L("Download File","Download File")}
+                        </a>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+    </>
+  );
+}
+
 // ─── Blog Detail ──────────────────────────────────────────────
+function TgiSurveyPage({ lang }) {
+  const L = (th,en) => lang === "th" ? th : en;
+  const initialForm = {
+    respondent_name: "",
+    phone: "",
+    tambon: "",
+    village: "",
+    community: "",
+    student_recorder: "",
+    stakeholder_type: "",
+    distance: "",
+    overall_score: "",
+    awareness_score: "",
+    participation_score: "",
+    behavior_score: "",
+    communication_score: "",
+    safety_score: "",
+    environment_impact_score: "",
+    csr_focus: [],
+    suggestion: "",
+  };
+  const [form,setForm] = useState(initialForm);
+  const [busy,setBusy] = useState(false);
+  const [message,setMessage] = useState(null);
+  const sections = [
+    L("ข้อมูลทั่วไป", "General Information"),
+    L("ความคิดเห็นต่อโครงการ", "Project Feedback"),
+    L("ผลกระทบจากการดำเนินงาน", "Operational Impact"),
+    L("ชุมชนและสิ่งแวดล้อม", "Community & Environment"),
+    L("ความรู้และความตระหนัก", "Knowledge & Awareness"),
+    L("ข้อเสนอแนะและความคาดหวัง", "Suggestions & Expectations"),
+  ];
+  const scoreQuestions = [
+    ["overall_score", L("ความพึงพอใจโดยรวมต่อกิจกรรมและการดำเนินงานของบริษัท", "Overall satisfaction with company activities and operations")],
+    ["communication_score", L("การสื่อสารข้อมูล ข่าวสาร และการรับฟังความคิดเห็นจากชุมชน", "Communication, information sharing, and community feedback channels")],
+    ["awareness_score", L("กิจกรรมช่วยสร้างความรู้และความตระหนักด้านสิ่งแวดล้อม", "Activities help improve environmental knowledge and awareness")],
+    ["participation_score", L("ชุมชนมีโอกาสเข้าร่วมกิจกรรมและแสดงความคิดเห็นอย่างเหมาะสม", "Community has proper opportunities to participate and give feedback")],
+    ["behavior_score", L("กิจกรรมส่งเสริมพฤติกรรมที่เป็นมิตรต่อสิ่งแวดล้อม", "Activities encourage environmentally friendly behavior")],
+    ["safety_score", L("ความเชื่อมั่นต่อความปลอดภัยและการดูแลผลกระทบจากโรงงาน", "Confidence in safety and factory impact management")],
+    ["environment_impact_score", L("ความพึงพอใจต่อการจัดการผลกระทบด้านสิ่งแวดล้อม", "Satisfaction with environmental impact management")],
+  ];
+  const focusOptions = [
+    L("การศึกษาและเยาวชน", "Education and youth"),
+    L("สิ่งแวดล้อมและพื้นที่สีเขียว", "Environment and green areas"),
+    L("สุขภาพและความปลอดภัย", "Health and safety"),
+    L("อาชีพและเศรษฐกิจชุมชน", "Local jobs and economy"),
+    L("สาธารณประโยชน์ / ชุมชนสัมพันธ์", "Public benefit / community relations"),
+  ];
+  const surveyPartOverview = [
+    "ส่วนที่ 1: ข้อมูลทั่วไปของผู้ตอบแบบสอบถาม (Nominal/Ordinal Data)",
+    "ส่วนที่ 2: ความคิดเห็นต่อโครงการด้านการศึกษา (4 โครงการหลัก)",
+    "ส่วนที่ 3: ความคิดเห็นต่อโครงการด้านชุมชนและสังคม",
+    "ส่วนที่ 4: ความคิดเห็นต่อโครงการด้านศิลปวัฒนธรรม",
+    "ส่วนที่ 5: ความคิดเห็นต่อโครงการด้านสิ่งแวดล้อม",
+    "ส่วนที่ 6: ความคิดเห็นและผลกระทบจากการดำเนินงานของบริษัท",
+    "ส่วนที่ 7: ลักษณะชุมชนและสิ่งแวดล้อมที่อยู่อาศัย",
+    "ส่วนที่ 8: ความรู้เกี่ยวกับการผลิตและการบริโภคอย่างยั่งยืน",
+    "ส่วนที่ 9: ความตระหนักต่อปัญหาและผลกระทบสิ่งแวดล้อม",
+    "ส่วนที่ 10: การมีส่วนร่วมในการอนุรักษ์สิ่งแวดล้อม",
+    "ส่วนที่ 11: พฤติกรรมการบริโภคที่เป็นมิตรต่อสิ่งแวดล้อม",
+    "ส่วนที่ 12: ข้อเสนอแนะและความคาดหวังต่อการดำเนินงานของบริษัท",
+  ];
+  const studentOptions = TGI_STUDENT_OPTIONS;
+  const likertText = ["มากที่สุด","มาก","ปานกลาง","น้อย","น้อยที่สุด"];
+  const scoreFive = ["5","4","3","2","1"];
+  const supplementalSelectFields = [
+    {id:"student_recorder", label:"รายชื่อนิสิตที่บันทึกแบบสอบถาม", options:studentOptions},
+    {id:"gender", label:"เพศ", options:["ชาย","หญิง","อื่น ๆ"]},
+    {id:"age_range", label:"อายุ", options:["18–20 ปี","20–35 ปี","36–50 ปี","51–65 ปี","มากกว่า 65 ปี"]},
+    {id:"education_level", label:"1.3 ระดับการศึกษา", options:["ประถมศึกษา","มัธยมศึกษาตอนต้น","มัธยมศึกษาตอนปลาย/ปวช.","อนุปริญญา/ปวส.","ปริญญาตรี","สูงกว่าปริญญาตรี"]},
+    {id:"occupation", label:"1.4 อาชีพ", options:["พนักงานบริษัท/โรงงาน","นักศึกษา","เกษตร/ประมง","ค้าขาย/ธุรกิจส่วนตัว","รับราชการ/รัฐวิสาหกิจ","รับจ้างทั่วไป","วิสาหกิจชุมชน (OTOP)","แม่บ้าน/พ่อบ้าน","อื่น ๆ (โปรดระบุ)"]},
+    {id:"household_income", label:"1.5 รายได้ครัวเรือนต่อเดือน", options:["ไม่มีรายได้","ต่ำกว่า 10,000 บาท","10,001–20,000 บาท","20,001–30,000 บาท","มากกว่า 30,000 บาท","ไม่ระบุ"]},
+    {id:"domicile", label:"1.6 ภูมิลำเนา", options:["เกิดและอาศัยที่นี่","ศีรษะจรเข้น้อย หมู่ 1","ศีรษะจรเข้น้อย หมู่ 2","ศีรษะจรเข้น้อย หมู่ 3","ศีรษะจรเข้น้อย หมู่ 4","ศีรษะจรเข้น้อย หมู่ 5","ศีรษะจรเข้น้อย หมู่ 6","ศีรษะจรเข้น้อย หมู่ 7","ศีรษะจรเข้น้อย หมู่ 8","ศีรษะจรเข้น้อย หมู่ 9","ศีรษะจรเข้น้อย หมู่ 10","ศีรษะจรเข้น้อย หมู่ 11","ศีรษะจรเข้น้อย หมู่ 12","ศีรษะจรเข้ใหญ่ หมู่ 3","ศีรษะจรเข้ใหญ่ หมู่ 4","ศีรษะจรเข้ใหญ่ หมู่ 5","ศีรษะจรเข้ใหญ่ หมู่ 6","ศีรษะจรเข้ใหญ่ หมู่ 7","ศีรษะจรเข้ใหญ่ หมู่ 8","ศีรษะจรเข้ใหญ่ หมู่ 9","หนองปรือ หมู่ 1","หนองปรือ หมู่ 2","หนองปรือ หมู่ 3","บางโฉลง หมู่ 5","บางโฉลง หมู่ 7","บางโฉลง หมู่ 10","บางเสาธง หมู่ 10","บางเสาธง หมู่ 11","บางเสาธง หมู่ 12","บางเสาธง หมู่ 13","บางเสาธง หมู่ 14","ย้ายมาจากจังหวัดอื่น (โปรดระบุ)"]},
+    {id:"housing_type", label:"1.8 ประเภทที่พักอาศัย", options:["บ้านเดี่ยว","ทาวน์เฮ้าส์","อพาร์ตเมนต์","คอนโดมิเนียม","ตึกแถว/อาคารพาณิชย์","อื่น ๆ (โปรดระบุ)"]},
+    {id:"housing_ownership", label:"1.9 การถือครองที่อยู่อาศัย", options:["เจ้าของ","ผู้อาศัย","เช่า","เช่าซื้อ","ใช้ฟรี (ไม่จ่ายค่าเช่า)","อื่น ๆ (โปรดระบุ)"]},
+    {id:"tgi_distance_original", label:"1.10 ระยะห่างจากบ้านท่านถึงโรงงาน TGI (โรงแก้ว)", options:["≤ 1 กิโลเมตร","1–3 กิโลเมตร","3–5 กิโลเมตร","มากกว่า 5 กิโลเมตร"]},
+    {id:"csr_awareness", label:"2.1 ท่านทราบหรือไม่ว่าบริษัทฯ จัดกิจกรรมพัฒนาชุมชน?", options:["ทราบ","ไม่แน่ใจ","ไม่ทราบ"]},
+    {id:"csr_overall_text", label:"2.4 ในภาพรวม ท่านพึงพอใจต่อกิจกรรม CSR ของบริษัทฯ ในระดับใด", options:likertText},
+    {id:"know_tgi", label:"6.1 ท่านรู้จักบริษัท TGI (โรงแก้ว) หรือไม่", options:["รู้จัก","ไม่รู้จัก"]},
+    {id:"factory_effect", label:"6.2 การมีโรงงาน TGI (โรงแก้ว) ตั้งอยู่ใกล้ชุมชนของท่านมีผลอย่างไร", options:["ไม่มีความคิดเห็น","ไม่มีผลใด ๆ","มีผลต่อชุมชน"]},
+    {id:"negative_impact", label:"6.4 ในรอบ 1 ปีที่ผ่านมา ท่านได้รับผลกระทบเชิงลบจากบริษัทฯ หรือไม่", options:["ไม่ได้รับ","ได้รับ"]},
+    {id:"environment_confidence", label:"6.6 ท่านมีความเชื่อมั่นในระบบจัดการสิ่งแวดล้อมของบริษัทฯ ในระดับใด", options:["มั่นใจมากที่สุด","มั่นใจมาก","ปานกลาง","ไม่มั่นใจ","ไม่แน่ใจ"]},
+    {id:"sroi_interview", label:"12.5 ท่านยินดีให้สัมภาษณ์เชิงลึกในการประเมินผล SROI หรือไม่", options:["ยินดี","ไม่ยินดี"]},
+  ];
+  const supplementalMultiFields = [
+    {id:"csr_info_sources", label:"2.2 หากทราบ ทราบจากแหล่งใด (ตอบได้มากกว่า 1 ข้อ)", options:["ผู้นำชุมชน/กรรมการหมู่บ้าน","บอร์ดประชาสัมพันธ์","เว็บไซต์/Facebook/Line","เสียงตามสาย/วิทยุชุมชน","อื่น ๆ (โปรดระบุ)"]},
+    {id:"wanted_activities", label:"2.5 กิจกรรมใดที่ท่านต้องการให้บริษัทฯ ดำเนินการเพิ่มเติม (ตอบได้มากกว่า 1 ข้อ)", options:["ด้านสิ่งแวดล้อม","ด้านสังคม","ด้านเศรษฐกิจ","ด้านการสร้างเครือข่ายในชุมชน","ด้านการลดความขัดแย้ง","อื่น ๆ (โปรดระบุ)"]},
+    {id:"company_info_channels", label:"3.13 ท่านได้รับข้อมูลข่าวสารเกี่ยวกับบริษัทฯ จากช่องทางใด (ตอบได้มากกว่า 1 ข้อ)", options:["ญาติ/ครอบครัว/เพื่อน","พนักงานบริษัท TGI","เจ้าหน้าที่รัฐ/ผู้นำชุมชน","สื่อออนไลน์ (เว็บไซต์/Line/Facebook/YouTube)","อื่น ๆ (โปรดระบุ)"]},
+    {id:"impact_actions", label:"6.5 หากได้รับผลกระทบ ท่านดำเนินการอย่างไร (ตอบได้มากกว่า 1 ข้อ)", options:["ไม่ดำเนินการใด","แจ้งหน่วยงานราชการ","แจ้งโรงงานผ่านป้อม รปภ./โทรศัพท์/อีเมล/เว็บไซต์","ร้องเรียนผ่านสื่อมวลชน","ยังไม่ได้รับการแก้ไข","ได้รับการแก้ไขแล้ว"]},
+    {id:"impact_suggestions", label:"6.7 ข้อเสนอแนะเพิ่มเติม (ตอบได้มากกว่า 1 ข้อ)", options:["ปรับปรุงระบบควบคุมมลพิษ","จัดกิจกรรมสร้างรายได้ในชุมชน","จ้างแรงงานท้องถิ่นเพิ่ม","สนับสนุนกิจกรรมชุมชนต่อเนื่อง","ประชาสัมพันธ์การดำเนินงานต่อเนื่อง"]},
+    {id:"community_safety_issues", label:"7.1 ปัญหาด้านความปลอดภัยในชุมชน", options:["ไม่มีปัญหา","โจร/ขโมย","อาชญากรรม","ยาเสพติด","ปัญหาคนในชุมชน","ปัญหาสิ่งแวดล้อม"]},
+    {id:"csr_future_focus", label:"12.1 ท่านอยากให้ TGI ดำเนินโครงการ CSR ด้านใดเพิ่มเติม (เลือกได้มากกว่า 1)", options:["การศึกษา","ชุมชนและสังคม","ศิลปวัฒนธรรม","สิ่งแวดล้อม","สาธารณสุข","พัฒนาอาชีพ"]},
+  ];
+  const supplementalScoreFields = [
+    {id:"csr_by_plan_score", label:"2.3 ระดับความพึงพอใจต่อกิจกรรม CSR แยกตามด้าน", options:likertText},
+    {id:"community_social_projects_score", label:"ส่วนที่ 3 ความคิดเห็นต่อโครงการด้านชุมชนและสังคม", options:likertText},
+    {id:"culture_projects_score", label:"ส่วนที่ 4 ความคิดเห็นต่อโครงการด้านศิลปวัฒนธรรม", options:likertText},
+    {id:"kap_knowledge_score", label:"5.1 Knowledge (K) ความรู้เกี่ยวกับการคัดแยกขยะและรีไซเคิลขวดแก้ว", options:["1","2","3","4","5"]},
+    {id:"kap_attitude_score", label:"5.2 Attitude (A) ทัศนคติด้านสิ่งแวดล้อม", options:["1","2","3","4","5"]},
+    {id:"kap_practice_score", label:"5.3 Practice (P) การปฏิบัติด้านสิ่งแวดล้อม", options:["1","2","3","4","5"]},
+    {id:"impact_level_score", label:"6.3 ระดับผลกระทบที่เกิดขึ้น", options:scoreFive},
+    {id:"community_activity_score", label:"7.2 การเข้าร่วมกิจกรรมชุมชน", options:["3","2","1","0"]},
+    {id:"daily_environment_impact_score", label:"7.3 ผลกระทบสิ่งแวดล้อมในชีวิตประจำวัน", options:["3","2","1","0"]},
+    {id:"sustainable_consumption_knowledge", label:"8. ความรู้เกี่ยวกับการผลิตและการบริโภคอย่างยั่งยืน", options:["ใช่","ไม่ใช่","ไม่ทราบ"]},
+    {id:"environment_awareness_score_full", label:"9. ความตระหนักต่อปัญหาและผลกระทบสิ่งแวดล้อม", options:scoreFive},
+    {id:"environment_participation_score_full", label:"10. การมีส่วนร่วมในการอนุรักษ์สิ่งแวดล้อม", options:scoreFive},
+    {id:"green_consumption_behavior_score_full", label:"11. พฤติกรรมการบริโภคที่เป็นมิตรกับสิ่งแวดล้อม", options:["0","1","2","3","4","5"]},
+    {id:"continued_project_ranking", label:"12.2 โครงการใดของ TGI ที่ควรดำเนินการต่อเนื่องมากที่สุด (Ranking 1–4)", options:["1","2","3","4"]},
+  ];
+  const supplementalTextFields = [
+    {id:"household_members", label:"1.7 สมาชิกในครัวเรือน (รวมผู้ตอบ) ............ คน"},
+    {id:"negative_impact_detail", label:"6.4.1 หากได้รับผลกระทบเชิงลบ โปรดระบุเรื่อง"},
+    {id:"impact_action_detail", label:"6.5.1 หากแจ้งหน่วยงานราชการ หรือมีรายละเอียดเพิ่มเติม โปรดระบุ"},
+    {id:"csr_obstacles", label:"12.3 ปัญหา/อุปสรรคของโครงการ CSR ของ TGI"},
+    {id:"final_suggestion", label:"12.4 ข้อเสนอแนะเพิ่มเติม"},
+  ];
+  const section2SelectIds = ["csr_awareness","csr_overall_text"];
+  const section2MultiIds = ["csr_info_sources","wanted_activities"];
+  const section2ScoreIds = ["csr_by_plan_score"];
+  const section2SelectFields = supplementalSelectFields.filter(field => section2SelectIds.includes(field.id));
+  const section2MultiFields = supplementalMultiFields.filter(field => section2MultiIds.includes(field.id));
+  const section2ScoreFields = supplementalScoreFields.filter(field => section2ScoreIds.includes(field.id));
+  const section2GridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => group.title.includes("2.3"));
+  const section6SelectIds = ["know_tgi","factory_effect","negative_impact","environment_confidence"];
+  const section3MultiIds = ["company_info_channels"];
+  const section3ScoreIds = ["community_social_projects_score"];
+  const section3MultiFields = supplementalMultiFields.filter(field => section3MultiIds.includes(field.id));
+  const section3ScoreFields = supplementalScoreFields.filter(field => section3ScoreIds.includes(field.id));
+  const section3GridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => group.title.includes("ส่วนที่ 3"));
+  const section4ScoreIds = ["culture_projects_score"];
+  const section4ScoreFields = supplementalScoreFields.filter(field => section4ScoreIds.includes(field.id));
+  const section4GridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => group.title.includes("ส่วนที่ 4"));
+  const section5ScoreIds = ["kap_knowledge_score","kap_attitude_score","kap_practice_score"];
+  const section5ScoreFields = supplementalScoreFields.filter(field => section5ScoreIds.includes(field.id));
+  const section5GridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => group.title.startsWith("5."));
+  const section6MultiIds = ["impact_actions","impact_suggestions"];
+  const section6ScoreIds = ["impact_level_score"];
+  const section6TextIds = ["negative_impact_detail","impact_action_detail"];
+  const section6SelectFields = supplementalSelectFields.filter(field => section6SelectIds.includes(field.id));
+  const section6MultiFields = supplementalMultiFields.filter(field => section6MultiIds.includes(field.id));
+  const section6ScoreFields = supplementalScoreFields.filter(field => section6ScoreIds.includes(field.id));
+  const section6TextFields = supplementalTextFields.filter(field => section6TextIds.includes(field.id));
+  const section6GridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => group.title.includes("6.3"));
+  const section7MultiIds = ["community_safety_issues"];
+  const section7ScoreIds = ["community_activity_score","daily_environment_impact_score"];
+  const section7MultiFields = supplementalMultiFields.filter(field => section7MultiIds.includes(field.id));
+  const section7ScoreFields = supplementalScoreFields.filter(field => section7ScoreIds.includes(field.id));
+  const section7GridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => group.title.includes("7.2") || group.title.includes("7.3"));
+  const section8ScoreIds = ["sustainable_consumption_knowledge"];
+  const section8ScoreFields = supplementalScoreFields.filter(field => section8ScoreIds.includes(field.id));
+  const section8GridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => group.title.includes("8."));
+  const section9ScoreIds = ["environment_awareness_score_full"];
+  const section9ScoreFields = supplementalScoreFields.filter(field => section9ScoreIds.includes(field.id));
+  const section9GridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => group.title.includes("9."));
+  const section10ScoreIds = ["environment_participation_score_full"];
+  const section10ScoreFields = supplementalScoreFields.filter(field => section10ScoreIds.includes(field.id));
+  const section10GridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => group.title.includes("10."));
+  const section11ScoreIds = ["green_consumption_behavior_score_full"];
+  const section11ScoreFields = supplementalScoreFields.filter(field => section11ScoreIds.includes(field.id));
+  const section11GridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => group.title.includes("11."));
+  const section12SelectIds = ["sroi_interview"];
+  const section12MultiIds = ["csr_future_focus"];
+  const section12ScoreIds = ["continued_project_ranking"];
+  const section12TextIds = ["csr_obstacles","final_suggestion"];
+  const section12SelectFields = supplementalSelectFields.filter(field => section12SelectIds.includes(field.id));
+  const section12MultiFields = supplementalMultiFields.filter(field => section12MultiIds.includes(field.id));
+  const section12ScoreFields = supplementalScoreFields.filter(field => section12ScoreIds.includes(field.id));
+  const section12TextFields = supplementalTextFields.filter(field => section12TextIds.includes(field.id));
+  const section12GridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => group.title.includes("12.2"));
+  const extractedSelectIds = [...section2SelectIds, ...section6SelectIds, ...section12SelectIds];
+  const extractedMultiIds = [...section2MultiIds, ...section3MultiIds, ...section6MultiIds, ...section7MultiIds, ...section12MultiIds];
+  const extractedScoreIds = [...section2ScoreIds, ...section3ScoreIds, ...section4ScoreIds, ...section5ScoreIds, ...section6ScoreIds, ...section7ScoreIds, ...section8ScoreIds, ...section9ScoreIds, ...section10ScoreIds, ...section11ScoreIds, ...section12ScoreIds];
+  const extractedTextIds = [...section6TextIds, ...section12TextIds];
+  const generalSelectFields = supplementalSelectFields.filter(field => field.id !== "student_recorder" && !extractedSelectIds.includes(field.id));
+  const generalMultiFields = supplementalMultiFields.filter(field => !extractedMultiIds.includes(field.id));
+  const generalScoreFields = supplementalScoreFields.filter(field => !extractedScoreIds.includes(field.id));
+  const generalTextFields = supplementalTextFields.filter(field => !extractedTextIds.includes(field.id));
+  const generalGridGroups = TGI_GOOGLE_GRID_FIELDS.filter(group => !["2.3","ส่วนที่ 3","ส่วนที่ 4","5.","6.3","7.2","7.3","8.","9.","10.","11.","12.2"].some(key => group.title.includes(key)));
+
+  const setField = (key, value) => setForm(prev => ({...prev, [key]: value}));
+  const setTambon = (value) => setForm(prev => ({...prev, tambon: value, village: ""}));
+  const toggleArrayField = (key, value) => setForm(prev => {
+    const current = Array.isArray(prev[key]) ? prev[key] : [];
+    return {
+      ...prev,
+      [key]: current.includes(value) ? current.filter(item => item !== value) : [...current, value],
+    };
+  });
+  const toggleFocus = (value) => setForm(prev => {
+    const current = prev.csr_focus || [];
+    return {
+      ...prev,
+      csr_focus: current.includes(value) ? current.filter(item => item !== value) : [...current, value],
+    };
+  });
+  const scoreFromAnswer = (value) => {
+    if (value === "" || value === undefined || value === null) return 0;
+    const numeric = Number(value);
+    if (!Number.isNaN(numeric)) return numeric;
+    const map = {"มากที่สุด":5,"มาก":4,"ปานกลาง":3,"น้อย":2,"น้อยที่สุด":1,"มั่นใจมากที่สุด":5,"มั่นใจมาก":4,"ไม่มั่นใจ":2,"ไม่แน่ใจ":1};
+    return map[value] || 0;
+  };
+  const collectSupplementalAnswers = () => {
+    const answers = {};
+    [...supplementalSelectFields, ...supplementalMultiFields, ...supplementalScoreFields, ...supplementalTextFields].forEach(field => {
+      answers[field.id] = {
+        label: field.label,
+        value: form[field.id] || (supplementalMultiFields.some(item => item.id === field.id) ? [] : ""),
+      };
+    });
+    return answers;
+  };
+  const collectGoogleGridAnswers = () => {
+    const answers = {};
+    TGI_GOOGLE_GRID_FIELDS.forEach(group => {
+      answers[group.id] = {
+        title: group.title,
+        rows: Object.fromEntries(group.rows.map(row => [row.id, {
+          label: row.label,
+          value: form[row.id] || "",
+        }])),
+      };
+    });
+    return answers;
+  };
+
+  const submitSurvey = async (event) => {
+    event.preventDefault();
+    setMessage(null);
+
+    if (!form.student_recorder || !form.tambon || !form.village || !form.overall_score || !form.awareness_score || !form.participation_score || !form.behavior_score) {
+      setMessage({type:"error", text:L("กรุณากรอกข้อมูลที่จำเป็นและให้คะแนนตัวชี้วัดหลักให้ครบ", "Please complete required fields and core score questions.")});
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const communityLabel = form.community || `${form.tambon} หมู่ ${form.village}`;
+      await tgiSurveyService.saveResponse({
+        respondent_name: form.respondent_name,
+        community: communityLabel,
+        organization: "TGI",
+        overall_score: Number(form.overall_score || 0),
+        awareness_score: Number(form.awareness_score || 0),
+        participation_score: Number(form.participation_score || 0),
+        behavior_score: Number(form.behavior_score || 0),
+        csr_focus: (form.csr_focus || []).join(", "),
+        suggestion: form.suggestion,
+        raw_data: {
+          source: "verdix_native_tgi_survey",
+          tambon: form.tambon,
+          village: form.village,
+          phone: form.phone,
+          stakeholder_type: form.stakeholder_type,
+          distance: form.distance,
+          student_recorder: form.student_recorder || "",
+          supplemental_answers: collectSupplementalAnswers(),
+          google_grid_answers: collectGoogleGridAnswers(),
+          communication_score: Number(form.communication_score || 0),
+          safety_score: Number(form.safety_score || 0),
+          environment_impact_score: Number(form.environment_impact_score || 0),
+          csr_overall_text_score: scoreFromAnswer(form.csr_overall_text),
+          environment_awareness_score_full: scoreFromAnswer(form.environment_awareness_score_full),
+          environment_participation_score_full: scoreFromAnswer(form.environment_participation_score_full),
+          green_consumption_behavior_score_full: scoreFromAnswer(form.green_consumption_behavior_score_full),
+          csr_focus: form.csr_focus || [],
+        },
+      });
+      setForm(initialForm);
+      setMessage({type:"success", text:L("ส่งแบบสอบถามเรียบร้อยแล้ว ขอบคุณสำหรับความคิดเห็นของท่าน", "Survey submitted. Thank you for your feedback.")});
+    } catch (error) {
+      setMessage({type:"error", text:error.message || L("ไม่สามารถส่งแบบสอบถามได้ กรุณาลองใหม่อีกครั้ง", "Could not submit the survey. Please try again.")});
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const ScoreInput = ({ id, label }) => (
+    <div className="survey-field">
+      <label>{label} <span className="survey-required">*</span></label>
+      <div className="survey-radio-grid">
+        {[1,2,3,4,5].map(score => (
+          <label className="survey-radio" key={`${id}-${score}`}>
+            <input type="radio" name={id} value={score} checked={String(form[id]) === String(score)} onChange={e=>setField(id,e.target.value)} />
+            {score}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+  const SelectField = ({ field }) => (
+    <div className="survey-field">
+      <label>{field.label}</label>
+      <select className="form-inp" value={form[field.id] || ""} onChange={e=>setField(field.id,e.target.value)}>
+        <option value="">เลือกคำตอบ</option>
+        {field.options.map(option => <option key={`${field.id}-${option}`} value={option}>{option}</option>)}
+      </select>
+    </div>
+  );
+  const MultiField = ({ field }) => (
+    <div className="survey-field">
+      <label>{field.label}</label>
+      <div className="survey-check-grid">
+        {field.options.map(option => (
+          <label className="survey-check" key={`${field.id}-${option}`}>
+            <input type="checkbox" checked={(form[field.id] || []).includes(option)} onChange={() => toggleArrayField(field.id, option)} />
+            {option}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+  const TextField = ({ field }) => (
+    <div className="survey-field">
+      <label>{field.label}</label>
+      <textarea className="form-inp" rows={3} value={form[field.id] || ""} onChange={e=>setField(field.id,e.target.value)} />
+    </div>
+  );
+  const GridGroup = ({ group }) => (
+    <div className="survey-grid-group">
+      <h3>{group.title}</h3>
+      <div className="survey-grid-table">
+        {group.rows.map(row => (
+          <div className="survey-grid-row" key={row.id}>
+            <div className="survey-grid-question">{row.label}</div>
+            <div className="survey-radio-grid compact">
+              {group.options.map(option => (
+                <label className="survey-radio" key={`${row.id}-${option}`}>
+                  <input
+                    type="radio"
+                    name={row.id}
+                    value={option}
+                    checked={String(form[row.id] || "") === String(option)}
+                    onChange={e=>setField(row.id,e.target.value)}
+                  />
+                  {option}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <main className="survey-page">
+      <div className="survey-shell">
+        <section className="survey-hero">
+          <div className="survey-hero-inner">
+            <div className="survey-kicker">TGI Community Satisfaction Survey</div>
+            <h1 className="survey-title">
+              {L(
+                "แบบสอบถามความพึงพอใจของชุมชนต่อการส่งเสริม สร้าง และสานสัมพันธ์กิจกรรมพัฒนาชุมชน ของบริษัท TGI (โรงแก้ว)",
+                "Community Satisfaction Survey for TGI Community Development and Relationship Activities"
+              )}
+            </h1>
+            <p className="survey-intro">
+              {L(
+                "บริษัท TGI มีความประสงค์จะประเมินความพึงพอใจของชุมชนต่อการดำเนินกิจกรรม CSR และผลกระทบจากการดำเนินงานของโรงงาน เพื่อนำข้อมูลไปใช้ประกอบการศึกษา จัดทำรายงาน และพัฒนาแนวทางการอยู่ร่วมกับชุมชนอย่างยั่งยืน",
+                "TGI is collecting community feedback on CSR activities and factory impacts to support reporting, improvement planning, and sustainable coexistence with local communities."
+              )}
+            </p>
+            <div className="survey-sections">
+              {sections.map(section => <span key={section}>{section}</span>)}
+            </div>
+          </div>
+        </section>
+
+        <section className="survey-frame-card">
+          <div className="survey-frame-head">
+            <strong>{L("กรุณาตอบแบบสอบถามตามความเป็นจริง", "Please answer the questionnaire honestly")}</strong>
+          </div>
+          <form className="survey-form" onSubmit={submitSurvey}>
+            <section className="survey-form-section survey-overview-section">
+              <h2>ภาพรวมแบบสอบถาม</h2>
+              <p className="survey-submit-note" style={{marginBottom:14}}>
+                แบบสอบถามนี้ประกอบด้วยข้อมูล 12 ส่วน เพื่อประเมินความพึงพอใจของชุมชนต่อกิจกรรมความรับผิดชอบต่อสังคม (CSR) ผลกระทบจากการดำเนินงานของโรงงาน และแนวทางการพัฒนาความสัมพันธ์กับชุมชนอย่างยั่งยืน
+              </p>
+              <div className="survey-part-list">
+                {surveyPartOverview.map(part => <div className="survey-part-item" key={part}>{part}</div>)}
+              </div>
+              <p className="survey-submit-note" style={{marginTop:14}}>
+                ขอความกรุณาตอบแบบสอบถามตามความเป็นจริง และขอขอบพระคุณที่ท่านสละเวลาให้ความร่วมมือในการตอบแบบสอบถามครั้งนี้
+              </p>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>{L("ส่วนที่ 1: ข้อมูลทั่วไปของผู้ตอบแบบสอบถาม (Nominal/Ordinal Data)", "Part 1 General Information (Nominal/Ordinal Data)")}</h2>
+              <div className="survey-form-grid">
+                <div className="survey-field">
+                  <label>{L("ชื่อ-นามสกุล", "Name")}</label>
+                  <input className="form-inp" value={form.respondent_name} onChange={e=>setField("respondent_name",e.target.value)} />
+                </div>
+                <div className="survey-field">
+                  <label>{L("เบอร์โทรศัพท์", "Phone")}</label>
+                  <input className="form-inp" value={form.phone} onChange={e=>setField("phone",e.target.value)} />
+                </div>
+                <div className="survey-field">
+                  <label>{L("รายชื่อนิสิตผู้บันทึกแบบสอบถาม", "Student recorder")} <span className="survey-required">*</span></label>
+                  <select className="form-inp" value={form.student_recorder} onChange={e=>setField("student_recorder",e.target.value)}>
+                    <option value="">{L("เลือกรายชื่อนิสิต", "Select student recorder")}</option>
+                    {studentOptions.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
+                <div className="survey-field">
+                  <label>{L("ตำบล", "Subdistrict")} <span className="survey-required">*</span></label>
+                  <select className="form-inp" value={form.tambon} onChange={e=>setTambon(e.target.value)}>
+                    <option value="">{L("เลือกตำบล", "Select subdistrict")}</option>
+                    {TGI_TAMBON_OPTIONS.map(tambon => <option key={tambon} value={tambon}>{tambon}</option>)}
+                  </select>
+                </div>
+                <div className="survey-field">
+                  <label>{L("หมู่", "Village")} <span className="survey-required">*</span></label>
+                  <select className="form-inp" value={form.village} onChange={e=>setField("village",e.target.value)} disabled={!form.tambon}>
+                    <option value="">{form.tambon ? L("เลือกหมู่", "Select village") : L("เลือกตำบลก่อน", "Select subdistrict first")}</option>
+                    {tgiVillageOptionsFor(form.tambon).map(village => <option key={village} value={village}>หมู่ {village}</option>)}
+                  </select>
+                </div>
+                <div className="survey-field">
+                  <label>{L("ชุมชน / หน่วยงานเพิ่มเติม", "Community / organization detail")}</label>
+                  <input className="form-inp" value={form.community} onChange={e=>setField("community",e.target.value)} placeholder={form.tambon && form.village ? `${form.tambon} หมู่ ${form.village}` : ""} />
+                </div>
+                <div className="survey-field">
+                  <label>{L("สถานะผู้ตอบ", "Stakeholder type")}</label>
+                  <select className="form-inp" value={form.stakeholder_type} onChange={e=>setField("stakeholder_type",e.target.value)}>
+                    <option value="">{L("เลือกสถานะ", "Select type")}</option>
+                    <option>{L("ประชาชนในพื้นที่", "Local resident")}</option>
+                    <option>{L("ผู้นำชุมชน", "Community leader")}</option>
+                    <option>{L("หน่วยงานราชการ", "Government agency")}</option>
+                    <option>{L("สถานศึกษา", "Education sector")}</option>
+                    <option>{L("อื่น ๆ", "Other")}</option>
+                  </select>
+                </div>
+                <div className="survey-field">
+                  <label>{L("ระยะห่างจากโรงงานโดยประมาณ", "Approximate distance from factory")}</label>
+                  <select className="form-inp" value={form.distance} onChange={e=>setField("distance",e.target.value)}>
+                    <option value="">{L("เลือกช่วงระยะ", "Select distance")}</option>
+                    <option>{L("น้อยกว่า 1 กม.", "Less than 1 km")}</option>
+                    <option>{L("1-3 กม.", "1-3 km")}</option>
+                    <option>{L("3-5 กม.", "3-5 km")}</option>
+                    <option>{L("มากกว่า 5 กม.", "More than 5 km")}</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ข้อมูลทั่วไปเพิ่มเติมจากแบบสอบถามเดิม</h2>
+              <p className="survey-submit-note" style={{marginBottom:14}}>
+                รายการด้านล่างอ้างอิงจาก Google Form เดิม ใช้เก็บข้อมูลผู้บันทึก ข้อมูลประชากร และคำถามทั่วไปก่อนเข้าสู่ส่วนประเมินรายหัวข้อ
+              </p>
+              <div className="survey-form-grid">
+                {generalSelectFields.map(field => <SelectField key={field.id} field={field} />)}
+                {generalTextFields.map(field => <TextField key={field.id} field={field} />)}
+              </div>
+              <div style={{display:"grid",gap:18,marginTop:18}}>
+                {generalScoreFields.map(field => <SelectField key={field.id} field={field} />)}
+                {generalMultiFields.map(field => <MultiField key={field.id} field={field} />)}
+              </div>
+              <div className="survey-grid-groups">
+                {generalGridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ส่วนที่ 2: ความคิดเห็นต่อโครงการด้านการศึกษา (4 โครงการหลัก)</h2>
+              <p className="survey-submit-note" style={{marginBottom:14}}>
+                ครอบคลุมคำถาม 2.1-2.5 จากแบบฟอร์ม Google Form เดิม รวมถึงระดับความพึงพอใจต่อกิจกรรม CSR ด้านการศึกษา
+              </p>
+              <div className="survey-form-grid">
+                {section2SelectFields.map(field => <SelectField key={field.id} field={field} />)}
+              </div>
+              <div style={{display:"grid",gap:18,marginTop:18}}>
+                {section2MultiFields.map(field => <MultiField key={field.id} field={field} />)}
+              </div>
+              <div className="survey-grid-groups">
+                {section2GridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ส่วนที่ 3: ความคิดเห็นต่อโครงการด้านชุมชนและสังคม</h2>
+              <p className="survey-submit-note" style={{marginBottom:14}}>
+                ครอบคลุมโครงการด้านชุมชนและสังคม 8 โครงการหลัก ตามแบบฟอร์ม Google Form เดิม
+              </p>
+              <div style={{display:"grid",gap:18}}>
+                {section3MultiFields.map(field => <MultiField key={field.id} field={field} />)}
+              </div>
+              <div className="survey-grid-groups">
+                {section3GridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ส่วนที่ 4: ความคิดเห็นต่อโครงการด้านศิลปวัฒนธรรม</h2>
+              <p className="survey-submit-note" style={{marginBottom:14}}>
+                ครอบคลุมคำถามส่วนที่ 4 จากแบบฟอร์ม Google Form เดิม เพื่อประเมินความพึงพอใจต่อกิจกรรมด้านศิลปวัฒนธรรม
+              </p>
+              <div className="survey-grid-groups">
+                {section4GridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ส่วนที่ 5: ความคิดเห็นต่อโครงการด้านสิ่งแวดล้อม</h2>
+              <p className="survey-submit-note" style={{marginBottom:14}}>
+                ครอบคลุมคำถาม 5.1-5.3 จากแบบฟอร์ม Google Form เดิม ทั้งด้านความรู้ ทัศนคติ และพฤติกรรมสิ่งแวดล้อม
+              </p>
+              <div className="survey-grid-groups">
+                {section5GridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ส่วนที่ 6: ความคิดเห็นและผลกระทบ</h2>
+              <p className="survey-submit-note" style={{marginBottom:14}}>
+                ครอบคลุมคำถาม 6.1-6.7 จากแบบฟอร์ม Google Form เดิม รวมถึงระดับผลกระทบ 6.3 แบบตาราง
+              </p>
+              <div className="survey-form-grid">
+                {section6SelectFields.map(field => <SelectField key={field.id} field={field} />)}
+                {section6TextFields.map(field => <TextField key={field.id} field={field} />)}
+              </div>
+              <h3 style={{fontSize:16,color:"#356351",margin:"18px 0 0",fontWeight:900}}>
+                6.4-6.7 ความคิดเห็นเพิ่มเติมเกี่ยวกับผลกระทบ
+              </h3>
+              <div style={{display:"grid",gap:18,marginTop:18}}>
+                {section6MultiFields.map(field => <MultiField key={field.id} field={field} />)}
+              </div>
+              <div className="survey-grid-groups">
+                {section6GridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ส่วนที่ 7: ลักษณะชุมชนและสิ่งแวดล้อมที่อยู่อาศัย</h2>
+              <p className="survey-submit-note" style={{marginBottom:14}}>
+                ครอบคลุมคำถาม 7.1-7.3 จากแบบฟอร์ม Google Form เดิม ทั้งปัญหาความปลอดภัย การเข้าร่วมกิจกรรมชุมชน และผลกระทบสิ่งแวดล้อมในชีวิตประจำวัน
+              </p>
+              <div style={{display:"grid",gap:18}}>
+                {section7MultiFields.map(field => <MultiField key={field.id} field={field} />)}
+              </div>
+              <div className="survey-grid-groups">
+                {section7GridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ส่วนที่ 8: ความรู้เกี่ยวกับการผลิตและการบริโภคอย่างยั่งยืน</h2>
+              <p className="survey-submit-note" style={{marginBottom:14}}>
+                ใช้สำหรับวิเคราะห์ความรู้พื้นฐานและความเชื่อมั่นตามแบบฟอร์ม Google Form เดิม
+              </p>
+              <div className="survey-grid-groups">
+                {section8GridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ส่วนที่ 9: ความตระหนักต่อปัญหาและผลกระทบสิ่งแวดล้อม</h2>
+              <div className="survey-grid-groups">
+                {section9GridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ส่วนที่ 10: การมีส่วนร่วมในการอนุรักษ์สิ่งแวดล้อม</h2>
+              <div className="survey-grid-groups">
+                {section10GridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ส่วนที่ 11: พฤติกรรมการบริโภคที่เป็นมิตรกับสิ่งแวดล้อม</h2>
+              <div className="survey-grid-groups">
+                {section11GridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>ส่วนที่ 12: ข้อเสนอแนะและความคาดหวัง</h2>
+              <div className="survey-form-grid">
+                {section12SelectFields.map(field => <SelectField key={field.id} field={field} />)}
+                {section12TextFields.map(field => <TextField key={field.id} field={field} />)}
+              </div>
+              <div style={{display:"grid",gap:18,marginTop:18}}>
+                {section12MultiFields.map(field => <MultiField key={field.id} field={field} />)}
+              </div>
+              <div className="survey-grid-groups">
+                {section12GridGroups.map(group => <GridGroup key={group.id} group={group} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>{L("ตัวชี้วัดสรุปสำหรับรายงาน VerdiX", "VerdiX Summary Indicators")}</h2>
+              <p className="survey-submit-note" style={{marginBottom:14}}>
+                {L("ให้คะแนน 1 = น้อยที่สุด, 5 = มากที่สุด เพื่อใช้สรุปภาพรวมในรายงานหลังบ้าน", "Score 1 = lowest, 5 = highest for admin report summaries")}
+              </p>
+              <div style={{display:"grid",gap:18}}>
+                {scoreQuestions.map(([id,label]) => <ScoreInput key={id} id={id} label={label} />)}
+              </div>
+            </section>
+
+            <section className="survey-form-section">
+              <h2>{L("ข้อเสนอแนะทั่วไป", "General Needs and Suggestions")}</h2>
+              <div className="survey-field" style={{marginBottom:16}}>
+                <label>{L("ด้านกิจกรรม CSR ที่ชุมชนอยากให้บริษัทให้ความสำคัญ", "CSR areas the community wants the company to prioritize")}</label>
+                <div className="survey-check-grid">
+                  {focusOptions.map(option => (
+                    <label className="survey-check" key={option}>
+                      <input type="checkbox" checked={(form.csr_focus || []).includes(option)} onChange={() => toggleFocus(option)} />
+                      {option}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="survey-field">
+                <label>{L("ข้อเสนอแนะเพิ่มเติม", "Additional suggestions")}</label>
+                <textarea className="form-inp" rows={5} value={form.suggestion} onChange={e=>setField("suggestion",e.target.value)} />
+              </div>
+            </section>
+
+            {message && <div className={`survey-message ${message.type}`}>{message.text}</div>}
+            <div className="survey-actions">
+              <button className="btn btn-dark" type="submit" disabled={busy}>{busy ? L("กำลังส่ง...", "Submitting...") : L("ส่งแบบสอบถาม", "Submit Survey")}</button>
+              <span className="survey-submit-note">
+                {L("ข้อมูลจะถูกบันทึกในระบบ VerdiX เพื่อใช้สรุปรายงานในหน้า Admin", "Responses are stored in VerdiX for Admin reporting.")}
+              </span>
+            </div>
+          </form>
+        </section>
+      </div>
+    </main>
+  );
+}
+
 function BlogDetail({ lang, article, nav }) {
   if (!article) return null;
+  const featured = lang === "th" ? FEATURED_ARTICLE_CONTENT[article.id] : null;
+  const hasImage = typeof article.image === "string" && article.image.startsWith("/");
+  const articleTitle = lang==="th"?article.title_th:article.title_en;
   const body = lang==="th"
     ? `บทความนี้ครอบคลุมประเด็นสำคัญด้าน "${article.title_th}" ในบริบทของประเทศไทย\n\nในปัจจุบัน การเปลี่ยนแปลงสภาพภูมิอากาศกลายเป็นความท้าทายระดับโลกที่ทุกองค์กรต้องให้ความสำคัญ ไม่ว่าจะเป็นการลด GHG Emission การรายงาน ESG หรือการเตรียมความพร้อมรับกฎหมาย Climate Change Act ที่กำลังจะประกาศใช้\n\nVerdiX เชื่อมองค์กรกับผู้เชี่ยวชาญที่มีความสามารถและประสบการณ์ตรง ผ่านระบบ Digital Assessment ที่ครอบคลุม Eco-Factory, Green Industry, CFO/CFP และ Net Zero Roadmap\n\nการประเมินผ่านระบบ VerdiX ช่วยให้องค์กรเห็นภาพชัดเจนของสถานะปัจจุบัน ช่องว่างที่ต้องพัฒนา และเส้นทางที่เป็นไปได้สู่ความยั่งยืนในระยะยาว\n\nเริ่มต้นได้วันนี้กับผู้เชี่ยวชาญของเรากว่า 120 คนทั่วประเทศไทย`
     : `This article covers key topics related to "${article.title_en}" in the context of Thailand's sustainability landscape.\n\nClimate change has become a global challenge that every organization must address — from reducing GHG emissions and reporting ESG to preparing for the upcoming Climate Change Act.\n\nVerdiX connects organizations with qualified and experienced sustainability experts through a comprehensive Digital Assessment system covering Eco-Factory, Green Industry, CFO/CFP, and Net Zero Roadmap.\n\nAssessments through VerdiX give organizations a clear picture of their current status, development gaps, and viable pathways toward long-term sustainability.\n\nGet started today with our network of over 120 certified experts across Thailand.`;
   return (
-    <div style={{background:"var(--white)"}}>
+    <div className="article-page">
       <div className="detail-wrap">
         <button className="back-btn" onClick={() => nav("blog")}>← {lang==="th"?"กลับไปบทความ":"Back to Blog"}</button>
-        <div className="detail-img">{article.image}</div>
-        <span className="badge">{article.category}</span>
-        <h1 className="detail-title">{lang==="th"?article.title_th:article.title_en}</h1>
-        <div className="detail-meta">
-          <span>✍ {article.author}</span>
-          <span>📅 {article.date}</span>
-          <span>📂 {article.category}</span>
+        <div className="article-hero">
+          <div className="article-kicker">
+            <div className={`detail-img ${hasImage ? "has-image" : ""}`}>
+              {hasImage ? <img src={article.image} alt={articleTitle} /> : article.image}
+            </div>
+            <span className="badge">{article.category}</span>
+          </div>
+          <h1 className="detail-title">{articleTitle}</h1>
+          <div className="detail-meta">
+            <span>โดย {article.author}</span>
+            <span>{article.date}</span>
+            <span>{article.category}</span>
+          </div>
         </div>
-        <div className="detail-body">
-          {body.split("\n\n").map((p,i) => <p key={i}>{p}</p>)}
+        <div className="article-shell">
+          <article className="article-card">
+            {hasImage && (
+              <div className="article-cover">
+                <img src={article.image} alt={articleTitle} />
+              </div>
+            )}
+            {featured ? (
+              <>
+                <p className="article-intro">{featured.intro}</p>
+                <div className="detail-body">
+                  {featured.sections.map((section, index) => (
+                    <section key={section.title}>
+                      <h2>{section.title}</h2>
+                      {section.paragraphs?.map((p, i) => <p key={`p-${index}-${i}`}>{p}</p>)}
+                      {section.list && (
+                        <ul className="article-list">
+                          {section.list.map(item => <li key={item}>{item}</li>)}
+                        </ul>
+                      )}
+                      {section.after?.map((p, i) => <p key={`a-${index}-${i}`}>{p}</p>)}
+                      {section.cta && (
+                        <div className="article-cta-list">
+                          {section.cta.map(item => <div className="article-cta-item" key={item}>{item}</div>)}
+                        </div>
+                      )}
+                      {section.quote && <div className="article-quote">“{section.quote}”</div>}
+                    </section>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="detail-body">
+                {body.split("\n\n").map((p,i) => <p key={i}>{p}</p>)}
+              </div>
+            )}
+          </article>
+          <aside className="article-side">
+            <div className="article-side-card">
+              <div className="article-side-title">{lang==="th"?"สาระสำคัญ":"Key Focus"}</div>
+              <p>{lang==="th" ? "แนวทางเตรียมองค์กรให้พร้อมต่อ Net Zero, ESG, Carbon Footprint และกฎระเบียบด้านสภาพภูมิอากาศ" : "A practical view of Net Zero, ESG, carbon footprint, and climate regulation readiness."}</p>
+              <div className="article-side-tags">
+                <span>Net Zero</span>
+                <span>ESG</span>
+                <span>CFO/CFP</span>
+                <span>Eco-Factory</span>
+              </div>
+            </div>
+            <div className="article-side-card">
+              <div className="article-side-title">{lang==="th"?"เริ่มต้นกับ VerdiX":"Start with VerdiX"}</div>
+              <p>{lang==="th" ? "ประเมินสถานะองค์กร ระบุ Gap Analysis และเชื่อมต่อผู้เชี่ยวชาญด้านความยั่งยืนทั่วประเทศ" : "Assess current status, identify gaps, and connect with sustainability experts."}</p>
+              <button className="btn-accent" onClick={() => nav("experts")}>{lang==="th"?"ค้นหาผู้เชี่ยวชาญ":"Find Experts"}</button>
+            </div>
+          </aside>
         </div>
       </div>
     </div>
@@ -1164,7 +3341,10 @@ function ExpertsPage({ t, lang, experts }) {
   const [q,setQ] = useState("");
   const shown = experts.filter(e => {
     const okArea = filter==="all" || e.expertise.includes(filter);
-    const key = (lang==="th"?e.name_th:e.name).toLowerCase();
+    const key = [
+      e.location,
+      ...(e.expertise || []),
+    ].join(" ").toLowerCase();
     return okArea && (!q || key.includes(q.toLowerCase()));
   });
   return (
@@ -1182,25 +3362,28 @@ function ExpertsPage({ t, lang, experts }) {
           </div>
           {shown.length===0 ? <p style={{textAlign:"center",color:"var(--muted)",padding:40}}>{t.no_result}</p> : (
             <div className="experts-grid">
-              {shown.map(e => (
-                <div className="exp-card" key={e.id}>
-                  <div className="exp-info">
-                    <div className="exp-avatar">{e.avatar}</div>
-                    <div>
-                      <div className="exp-name">{lang==="th"?e.name_th:e.name}</div>
-                      <div className="exp-title">{lang==="th"?e.title_th:e.title_en}</div>
-                      <div className="exp-loc">📍 {e.location}</div>
+              {shown.map((e, index) => {
+                const publicText = getPublicExpertText(e, index, lang);
+                return (
+                  <div className="exp-card" key={e.id}>
+                    <div className="exp-info">
+                      <div className="exp-avatar">{e.avatar}</div>
+                      <div>
+                        <div className="exp-name">{publicText.name}</div>
+                        <div className="exp-title">{publicText.title}</div>
+                        <div className="exp-loc">📍 {e.location}</div>
+                      </div>
+                    </div>
+                    <div className="exp-tags">{e.expertise.map(ex => <span key={ex} className="exp-tag">{ex}</span>)}</div>
+                    <div className="exp-foot">
+                      <div className="exp-rating">⭐ {e.rating} <span style={{color:"var(--muted)",fontWeight:400,fontSize:12}}>({e.reviews} {t.reviews})</span></div>
+                      <div style={{textAlign:"right"}}>
+                        <button className="btn-accent" style={{padding:"6px 16px",fontSize:13}}>{t.contact}</button>
+                      </div>
                     </div>
                   </div>
-                  <div className="exp-tags">{e.expertise.map(ex => <span key={ex} className="exp-tag">{ex}</span>)}</div>
-                  <div className="exp-foot">
-                    <div className="exp-rating">⭐ {e.rating} <span style={{color:"var(--muted)",fontWeight:400,fontSize:12}}>({e.reviews} {t.reviews})</span></div>
-                    <div style={{textAlign:"right"}}>
-                      <button className="btn-accent" style={{padding:"6px 16px",fontSize:13}}>{t.contact}</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1210,10 +3393,150 @@ function ExpertsPage({ t, lang, experts }) {
 }
 
 // ─── Login ────────────────────────────────────────────────────
-function LoginPage({ t, nav, doLogin, authBusy, authMessage }) {
+function MemberDashboard({ user, cfoSubmissions, nav }) {
+  const latest = (cfoSubmissions || [])[0];
+  const approved = (cfoSubmissions || []).filter(item => item.status === "approved").length;
+  return (
+    <section className="section">
+      <div className="container">
+        <div style={{display:"flex",justifyContent:"space-between",gap:20,alignItems:"flex-start",marginBottom:28}}>
+          <div>
+            <span className="section-tag">● MEMBER WORKSPACE</span>
+            <h1 className="section-title" style={{marginBottom:8}}>ระบบสมาชิก VERDIX</h1>
+            <p className="section-sub">ยินดีต้อนรับ {user?.name || user?.email} - เริ่มกรอกแบบประเมิน CFO และติดตามสถานะการตรวจจากผู้ประเมินได้ที่นี่</p>
+          </div>
+          <button className="btn btn-dark" onClick={() => nav("cfo-assessment")}>+ กรอกแบบประเมิน CFO</button>
+        </div>
+        <div className="grid-3" style={{marginBottom:26}}>
+          {[
+            ["แบบประเมินทั้งหมด", (cfoSubmissions || []).length, "ฉบับ"],
+            ["ผ่านการยืนยัน", approved, "ฉบับ"],
+            ["สถานะล่าสุด", latest ? CFO_STATUS_LABELS[latest.status] || latest.status : "-", ""],
+          ].map(([label, value, unit]) => (
+            <div key={label} className="stat-card"><div>{label}</div><strong>{value}</strong><span>{unit}</span></div>
+          ))}
+        </div>
+        <div className="tbl-wrap">
+          <table>
+            <thead><tr><th>วันที่ส่ง</th><th>องค์กร</th><th>ปีรายงาน</th><th>Total</th><th>Status</th><th>หมายเหตุผู้ตรวจ</th></tr></thead>
+            <tbody>
+              {(cfoSubmissions || []).length ? cfoSubmissions.map(item => (
+                <tr key={item.id}>
+                  <td>{new Date(item.created_at).toLocaleDateString("th-TH")}</td>
+                  <td style={{fontWeight:700,color:"var(--g1)"}}>{item.organization_name || "-"}</td>
+                  <td>{item.reporting_year || "-"}</td>
+                  <td>{formatTon(item.result?.total)} tCO2eq</td>
+                  <td><span className="badge">{CFO_STATUS_LABELS[item.status] || item.status}</span></td>
+                  <td>{item.review_note || "-"}</td>
+                </tr>
+              )) : (
+                <tr><td colSpan={6} style={{textAlign:"center",padding:28,color:"var(--muted)"}}>ยังไม่มีแบบประเมิน CFO</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CfoAssessmentPage({ user, nav, onSave }) {
+  const [meta, setMeta] = useState({ organization_name: user?.name || "", reporting_year: String(new Date().getFullYear()), boundary: "องค์กรปกครองส่วนท้องถิ่น / หน่วยงาน" });
+  const [rows, setRows] = useState(defaultCfoRows);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const result = calculateCfoAssessment(rows);
+  const setRow = (key, field, value) => setRows(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [field]: value } }));
+  const submit = async (status = "submitted") => {
+    setSaving(true);
+    setMessage("");
+    const saved = await onSave({
+      user_email: user?.email,
+      organization_name: meta.organization_name,
+      reporting_year: meta.reporting_year,
+      form_data: { meta, rows },
+      result: { totals: result.totals, scope12: result.scope12, total: result.total, lines: result.lines },
+      status,
+    });
+    setSaving(false);
+    setMessage(status === "draft" ? "บันทึกร่างแล้ว" : "ส่งแบบประเมินให้ผู้ตรวจแล้ว");
+    if (saved?.id && status !== "draft") setTimeout(() => nav("member"), 450);
+  };
+  if (!user) return <section className="section"><div className="container"><p>กรุณาเข้าสู่ระบบก่อนกรอกแบบประเมิน CFO</p></div></section>;
+  return (
+    <section className="section">
+      <div className="container">
+        <button className="back-btn" onClick={() => nav("member")}>← กลับระบบสมาชิก</button>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:24,marginBottom:26}}>
+          <div>
+            <span className="section-tag">● CFO ASSESSMENT</span>
+            <h1 className="section-title" style={{marginBottom:8}}>แบบฟอร์มประเมิน CFO</h1>
+            <p className="section-sub">คำนวณตามแนวคิดในไฟล์ Excel: Activity Data × Emission Factor ÷ 1000 = tonCO2eq แยก Scope 1, 2 และ 3</p>
+          </div>
+          <div style={{minWidth:260,background:"var(--g1)",color:"#fff",borderRadius:"var(--r-lg)",padding:20}}>
+            <div style={{fontSize:12,color:"rgba(255,255,255,.65)",marginBottom:6}}>Total GHG Emission</div>
+            <div style={{fontSize:34,fontWeight:900,fontFamily:"'Playfair Display',serif",color:"var(--ga)"}}>{formatTon(result.total)}</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,.7)"}}>tCO2eq / ปี</div>
+          </div>
+        </div>
+        <div className="tbl-wrap" style={{padding:22,marginBottom:20}}>
+          <div className="form-row">
+            <div className="form-grp"><label className="form-lbl">ชื่อองค์กร</label><input className="form-inp" value={meta.organization_name} onChange={e=>setMeta(p=>({...p,organization_name:e.target.value}))} /></div>
+            <div className="form-grp"><label className="form-lbl">ปีที่เก็บข้อมูล</label><input className="form-inp" value={meta.reporting_year} onChange={e=>setMeta(p=>({...p,reporting_year:e.target.value}))} /></div>
+          </div>
+          <div className="form-grp"><label className="form-lbl">ขอบเขตองค์กร</label><input className="form-inp" value={meta.boundary} onChange={e=>setMeta(p=>({...p,boundary:e.target.value}))} /></div>
+        </div>
+        {CFO_ACTIVITY_GROUPS.map(group => (
+          <div className="tbl-wrap" style={{marginBottom:22}} key={group.scope}>
+            <div style={{padding:"18px 20px",borderBottom:"1px solid var(--border)",background:"var(--gll)"}}>
+              <h3 style={{fontSize:18,color:"var(--g1)",marginBottom:4}}>{group.title}</h3>
+              <div style={{fontSize:13,color:"var(--muted)"}}>{group.note}</div>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table>
+                <thead><tr><th>รายการ</th><th>หน่วย</th><th>ปริมาณรวมต่อปี</th><th>EF (kgCO2eq/unit)</th><th>ผลรวม</th><th>หลักฐาน/หมายเหตุ</th></tr></thead>
+                <tbody>
+                  {group.items.map(item => {
+                    const row = rows[item.key] || {};
+                    const line = result.lines.find(x => x.key === item.key);
+                    return (
+                      <tr key={item.key}>
+                        <td><div style={{fontWeight:700,color:"var(--g1)"}}>{item.label}</div><div style={{fontSize:12,color:"var(--muted)"}}>{item.source}</div></td>
+                        <td>{item.unit}</td>
+                        <td><input className="form-inp" type="number" value={row.quantity ?? ""} onChange={e=>setRow(item.key,"quantity",e.target.value)} /></td>
+                        <td><input className="form-inp" type="number" step="0.000001" value={row.ef ?? item.ef} onChange={e=>setRow(item.key,"ef",e.target.value)} /></td>
+                        <td style={{fontWeight:800,color:"var(--g2)"}}>{formatTon(line?.emission)} tCO2eq</td>
+                        <td><input className="form-inp" value={row.evidence || ""} placeholder="เลขที่บิล/ไฟล์หลักฐาน/หมายเหตุ" onChange={e=>setRow(item.key,"evidence",e.target.value)} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+        <div className="grid-3" style={{marginBottom:22}}>
+          {["scope1","scope2","scope3"].map(scope => (
+            <div className="stat-card" key={scope}><div>{CFO_SCOPE_LABELS[scope]}</div><strong>{formatTon(result.totals[scope])}</strong><span>tCO2eq</span></div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:12,justifyContent:"flex-end",alignItems:"center"}}>
+          {message && <span style={{color:"var(--g2)",fontWeight:700,marginRight:"auto"}}>{message}</span>}
+          <button className="btn" onClick={() => submit("draft")} disabled={saving}>บันทึกร่าง</button>
+          <button className="btn btn-dark" onClick={() => submit("submitted")} disabled={saving || !meta.organization_name}>ส่งให้ผู้ตรวจประเมิน</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LoginPage({ t, nav, doLogin, doResendConfirmation, doPasswordReset, authBusy, authMessage }) {
   const [email,setEmail] = useState("");
   const [pass,setPass] = useState("");
+  const [showPass,setShowPass] = useState(false);
   const submit = () => doLogin(email, pass);
+  const resendConfirmation = () => doResendConfirmation(email);
+  const resetPassword = () => doPasswordReset(email);
   return (
     <div className="auth-page">
       <div className="auth-hero">
@@ -1237,11 +3560,44 @@ function LoginPage({ t, nav, doLogin, authBusy, authMessage }) {
           </div>
           <div className="form-grp">
             <label className="form-lbl">{t.password}</label>
-            <input className="form-inp" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&submit()} />
+            <div style={{position:"relative"}}>
+              <input
+                className="form-inp"
+                type={showPass ? "text" : "password"}
+                value={pass}
+                onChange={e=>setPass(e.target.value)}
+                placeholder="••••••••"
+                onKeyDown={e=>e.key==="Enter"&&submit()}
+                style={{paddingRight:46}}
+              />
+              <button
+                type="button"
+                aria-label={showPass ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
+                onClick={() => setShowPass(v => !v)}
+                style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",width:30,height:30,border:0,borderRadius:8,background:"transparent",color:"var(--muted)",fontSize:18,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}
+              >
+                {showPass ? "🙈" : "👁"}
+              </button>
+            </div>
           </div>
           <button className="btn btn-dark" style={{width:"100%",padding:13,fontSize:16}} onClick={submit} disabled={authBusy}>{authBusy ? "Loading..." : t.login}</button>
-          {authMessage && <div className={`auth-message ${authMessage.type === "error" ? "error" : ""}`}>{authMessage.text}</div>}
-          <div className="admin-hint">💡 {t.adm_hint}</div>
+          {authMessage && (
+            <div className={`auth-message ${authMessage.type === "error" ? "error" : ""}`}>
+              {authMessage.text}
+              {authMessage.canResend && (
+                <button
+                  type="button"
+                  className="link-btn"
+                  style={{display:"block",marginTop:10,fontWeight:900}}
+                  onClick={resendConfirmation}
+                  disabled={authBusy}
+                >
+                  ส่งอีเมลยืนยันอีกครั้ง
+                </button>
+              )}
+            </div>
+          )}
+          <p className="form-hint"><button onClick={resetPassword} disabled={authBusy}>ลืมรหัสผ่าน / ส่งลิงก์ตั้งรหัสใหม่</button></p>
           <p className="form-hint">{t.no_account} <button onClick={() => nav("register")}>{t.register}</button></p>
         </div>
       </div>
@@ -1250,6 +3606,34 @@ function LoginPage({ t, nav, doLogin, authBusy, authMessage }) {
 }
 
 // ─── Register ─────────────────────────────────────────────────
+function ResetPasswordPage({ nav, doUpdatePassword, authBusy, authMessage }) {
+  const [pass,setPass] = useState("");
+  const [confirm,setConfirm] = useState("");
+  const submit = () => doUpdatePassword(pass, confirm);
+  return (
+    <div className="auth-page">
+      <div className="auth-panel" style={{margin:"0 auto"}}>
+        <div className="auth-card">
+          <BrandLogo className="auth-brand" />
+          <h2 className="auth-title">ตั้งรหัสผ่านใหม่</h2>
+          <p className="auth-subtitle">กรอกรหัสผ่านใหม่สำหรับบัญชีของคุณ</p>
+          <div className="form-grp">
+            <label className="form-lbl">รหัสผ่านใหม่</label>
+            <input className="form-inp" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="อย่างน้อย 8 ตัวอักษร" />
+          </div>
+          <div className="form-grp">
+            <label className="form-lbl">ยืนยันรหัสผ่านใหม่</label>
+            <input className="form-inp" type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} placeholder="กรอกรหัสผ่านอีกครั้ง" onKeyDown={e=>e.key==="Enter"&&submit()} />
+          </div>
+          <button className="btn btn-dark" style={{width:"100%",padding:13,fontSize:16}} onClick={submit} disabled={authBusy}>{authBusy ? "Loading..." : "บันทึกรหัสผ่านใหม่"}</button>
+          {authMessage && <div className={`auth-message ${authMessage.type === "error" ? "error" : ""}`}>{authMessage.text}</div>}
+          <p className="form-hint"><button onClick={() => nav("login")}>กลับหน้าเข้าสู่ระบบ</button></p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RegisterPage({ t, nav, doRegister, authBusy, authMessage }) {
   const [f,setF] = useState({name:"",email:"",org:"",pass:""});
   const set = (k,v) => setF(p=>({...p,[k]:v}));
@@ -1287,14 +3671,23 @@ function RegisterPage({ t, nav, doRegister, authBusy, authMessage }) {
 }
 
 // ─── Admin Panel ──────────────────────────────────────────────
-function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slides, setSlides, footer, setFooter, menus, setMenus, sec, setSec }) {
+function AdminPanel({ t, lang, currentUser, articles, setArticles, documents, setDocuments, experts, setExperts, slides, setSlides, footer, setFooter, menus, setMenus, cfoSubmissions, onReviewCfo, tgiSurveyResponses, onSaveTgiSurvey, onImportTgiSurvey, onDeleteTgiSurvey, userRoles, onSaveUserRole, onDeleteUserRole, onSendPasswordSetup, sec, setSec }) {
   const [modal,setModal] = useState(null); // null | {type,item}
   const [form,setForm] = useState({});
+  const [userForm,setUserForm] = useState({email:"",full_name:"",organization:"",role:"standard_user",status:"active",note:""});
+  const isFullAdmin = isAdminRole(currentUser?.role);
+  const isTgiViewerOnly = currentUser?.role === "tgi_report_viewer";
+  const activeSec = isTgiViewerOnly ? "tgi-survey" : sec;
+
+  useEffect(() => {
+    if (isTgiViewerOnly && sec !== "tgi-survey") setSec("tgi-survey");
+  }, [isTgiViewerOnly, sec, setSec]);
 
   const openModal = (type, item=null) => {
     setModal({type,item});
     const blank = {
       post: {title_th:"",title_en:"",excerpt_th:"",excerpt_en:"",category:"Net Zero",author:"",image:"📄",date:new Date().toISOString().split("T")[0]},
+      document: {title_th:"",title_en:"",description_th:"",description_en:"",category:"Eco Factory",file_url:"",file_data_url:"",file_name:"",file_type:"PDF",file_size:0,version:"1.0",updated_at:new Date().toISOString().split("T")[0],downloads:0,active:true},
       expert: {name:"",name_th:"",title_th:"",title_en:"",expertise:[],location:"",rating:5.0,reviews:0,manday:10000,avatar:"👤"},
       slide: {title_th:"",title_en:"",kicker_th:"",kicker_en:"",subtitle_th:"",subtitle_en:"",primary_th:"เริ่มต้นใช้งาน",primary_en:"Get Started",primary_page:"register",secondary_th:"ค้นหาผู้เชี่ยวชาญ",secondary_en:"Find Experts",secondary_page:"experts",image:"https://images.unsplash.com/photo-1497435334941-8c899ee9e8e9?auto=format&fit=crop&w=1800&q=80",active:true}
     };
@@ -1309,6 +3702,10 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
     } else if (modal.type==="expert") {
       if (modal.item) setExperts(p => p.map(e => e.id===modal.item.id ? {...form,id:modal.item.id} : e));
       else setExperts(p => [...p, {...form,id:Date.now()}]);
+    } else if (modal.type==="document") {
+      const row = {...form, file_size:Number(form.file_size || 0), downloads:Number(form.downloads || 0), active:form.active !== false};
+      if (modal.item) setDocuments(p => p.map(d => d.id===modal.item.id ? {...row,id:modal.item.id} : d));
+      else setDocuments(p => [...p, {...row,id:Date.now()}]);
     } else if (modal.type==="menu") {
       const row = {...form, parent_id: form.parent_id ? Number(form.parent_id) : null, order: Number(form.order || 0), active: form.active !== false};
       if (modal.item) setMenus(p => p.map(m => m.id===modal.item.id ? {...row,id:modal.item.id} : m));
@@ -1324,8 +3721,62 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
     if (!window.confirm(t.confirm_del)) return;
     if (type==="post") setArticles(p => p.filter(a => a.id!==id));
     else if (type==="expert") setExperts(p => p.filter(e => e.id!==id));
+    else if (type==="document") setDocuments(p => p.filter(d => d.id!==id));
     else if (type==="menu") setMenus(p => p.filter(m => m.id!==id && String(m.parent_id) !== String(id)));
     else setSlides(p => p.filter(s => s.id!==id));
+  };
+
+  const saveUserRole = async (payload) => {
+    const cleanEmail = String(payload.email || "").trim().toLowerCase();
+    if (!cleanEmail) {
+      window.alert(lang==="th" ? "กรุณากรอกอีเมลผู้ใช้งาน" : "Please enter user email.");
+      return;
+    }
+
+    await onSaveUserRole({
+      ...payload,
+      email: cleanEmail,
+      full_name: payload.full_name || cleanEmail,
+      role: payload.role || "standard_user",
+      status: payload.status || "active",
+    });
+  };
+
+  const addUserRole = async () => {
+    await saveUserRole(userForm);
+    setUserForm({email:"",full_name:"",organization:"",role:"standard_user",status:"active",note:""});
+  };
+
+  const updateUserRole = (row, key, value) => {
+    saveUserRole({...row, [key]: value});
+  };
+
+  const copyUserInvite = async (row) => {
+    const email = String(row?.email || "").trim().toLowerCase();
+    if (!email) return;
+    const message = lang === "th"
+      ? `บัญชี ${email} ได้รับสิทธิ์ในระบบ VerdiX แล้ว\n\nกรุณาเข้า https://www.verdixgreen.com/ แล้วกด \"สมัครสมาชิก\" โดยใช้อีเมลนี้ จากนั้นตั้งรหัสผ่านของคุณเอง เมื่อสมัครเสร็จให้เข้าสู่ระบบได้ทันที`
+      : `The account ${email} has been granted access to VerdiX.\n\nPlease visit https://www.verdixgreen.com/ and click "Register" using this email address, then set your own password. After registration, you can sign in immediately.`;
+    try {
+      await navigator.clipboard.writeText(message);
+      window.alert(lang === "th" ? "คัดลอกข้อความเชิญแล้ว" : "Invitation message copied.");
+    } catch {
+      window.prompt(lang === "th" ? "คัดลอกข้อความนี้ส่งให้ผู้ใช้" : "Copy this message for the user", message);
+    }
+  };
+
+  const handleSlideImageUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm(f => ({
+        ...f,
+        image: reader.result,
+        image_name: file.name,
+      }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const sides = [
@@ -1333,10 +3784,13 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
     {id:"menus",icon:"☰",lbl:lang==="th"?"จัดการ Menu":"Manage Menu"},
     {id:"slides",icon:"🖼️",lbl:lang==="th"?"จัดการ Slide":"Manage Slides"},
     {id:"footer",icon:"🔗",lbl:lang==="th"?"จัดการ Footer":"Manage Footer"},
+    {id:"cfo",icon:"🌡️",lbl:lang==="th"?"ตรวจ CFO":"CFO Review"},
+    {id:"tgi-survey",icon:"📋",lbl:lang==="th"?"รายงาน TGI":"TGI Survey"},
+    {id:"documents",icon:"📁",lbl:lang==="th"?"จัดการเอกสาร":"Download Manager"},
     {id:"posts",icon:"📝",lbl:t.adm_posts},
     {id:"experts",icon:"👥",lbl:t.adm_exp},
     {id:"users",icon:"👤",lbl:t.adm_users},
-  ];
+  ].filter(item => isFullAdmin || item.id === "tgi-survey");
 
   const setFooterField = (key, value) => setFooter(f => ({...f, [key]: value}));
   const encodePipeRows = (rows, keys) => (rows || []).map(row => keys.map(k => row[k] || "").join("|")).join("\n");
@@ -1352,6 +3806,143 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
     return (a.order || 0) - (b.order || 0);
   });
   const menuName = (m) => lang === "th" ? (m.label_th || m.label_en) : (m.label_en || m.label_th);
+  const handleDocumentFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm(f => ({
+        ...f,
+        file_data_url: reader.result,
+        file_name: file.name,
+        file_type: (file.name.split(".").pop() || file.type || "FILE").toUpperCase(),
+        file_size: file.size,
+        updated_at: new Date().toISOString().split("T")[0]
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+  const tgiSummary = summarizeTgiSurvey(tgiSurveyResponses || []);
+  const addTgiSurveySample = () => {
+    const community = window.prompt(lang==="th" ? "ชื่อชุมชน" : "Community", "");
+    if (community === null) return;
+    onSaveTgiSurvey({
+      respondent_name: window.prompt(lang==="th" ? "ชื่อผู้ตอบ (ไม่บังคับ)" : "Respondent name (optional)", "") || "",
+      community,
+      organization: "TGI",
+      overall_score: Number(window.prompt("Overall score 1-5", "4") || 0),
+      awareness_score: Number(window.prompt("Awareness score 1-5", "4") || 0),
+      participation_score: Number(window.prompt("Participation score 1-5", "4") || 0),
+      behavior_score: Number(window.prompt("Behavior score 0-5", "3") || 0),
+      csr_focus: window.prompt(lang==="th" ? "ด้าน CSR ที่สนใจ" : "CSR focus", "สิ่งแวดล้อม") || "",
+      suggestion: window.prompt(lang==="th" ? "ข้อเสนอแนะ" : "Suggestion", "") || "",
+    });
+  };
+  const importTgiCsv = () => {
+    const text = window.prompt(
+      lang==="th"
+        ? "วาง CSV โดยใช้ header: respondent_name,tambon,village,community,organization,overall_score,awareness_score,participation_score,behavior_score,csr_focus,suggestion,created_at"
+        : "Paste CSV with header: respondent_name,tambon,village,community,organization,overall_score,awareness_score,participation_score,behavior_score,csr_focus,suggestion,created_at",
+      "respondent_name,tambon,village,community,organization,overall_score,awareness_score,participation_score,behavior_score,csr_focus,suggestion,created_at\n"
+    );
+    if (!text) return;
+    const rows = parseTgiCsv(text);
+    if (!rows.length) {
+      window.alert(lang==="th" ? "ไม่พบข้อมูลใน CSV" : "No CSV rows found");
+      return;
+    }
+    onImportTgiSurvey(rows);
+  };
+  const exportTgiCsv = () => {
+    const csv = toTgiCsv(tgiSurveyResponses || []);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `tgi-survey-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+  const printTgiReport = (mode, title) => {
+    const currentTitle = document.title;
+    const printClass = mode ? `print-tgi-${mode}` : "";
+    document.title = `${title} ${new Date().toISOString().slice(0,10)}`;
+    if (printClass) document.body.classList.add(printClass);
+    window.print();
+    setTimeout(() => {
+      if (printClass) document.body.classList.remove(printClass);
+      document.title = currentTitle;
+    }, 500);
+  };
+  const exportTgiPdf = () => printTgiReport("executive", "TGI Executive Summary");
+  const exportTgiFullPdf = () => printTgiReport("full", "TGI Full Report");
+  const exportTgiRawPdf = () => printTgiReport("raw", "TGI Raw Data");
+  const exportTgiSummaryCsv = () => {
+    const lines = [
+      ["section","label","value"],
+      ["KPI","Responses",tgiSummary.total],
+      ["KPI","Overall Satisfaction",tgiSummary.avgOverall.toFixed(2)],
+      ["KPI","Environmental Awareness",tgiSummary.avgAwareness.toFixed(2)],
+      ["KPI","Participation",tgiSummary.avgParticipation.toFixed(2)],
+      ["KPI","Eco-friendly Behavior",tgiSummary.avgBehavior.toFixed(2)],
+      ["KPI","Score Level",tgiSummary.scoreLevel],
+      ["KPI","Top CSR Focus",tgiSummary.topFocus],
+      ["KPI","Latest Response",tgiSummary.latestDate ? new Date(tgiSummary.latestDate).toLocaleDateString("th-TH") : "-"],
+    ];
+    tgiMetricRows.forEach(metric => {
+      lines.push(["Key Indicator", metric.label, metric.value.toFixed(2)]);
+    });
+    (tgiSummary.topCommunityRows || []).forEach((item, index) => {
+      lines.push(["Top Communities", `${index + 1}. ${item.label}`, item.count]);
+    });
+    (tgiSummary.topRecorderRows || []).forEach((item, index) => {
+      lines.push(["Student Recorders", `${index + 1}. ${item.label}`, item.count]);
+    });
+    (tgiSummary.topFocusRows || []).forEach((item, index) => {
+      lines.push(["CSR Focus", `${index + 1}. ${item.label}`, item.count]);
+    });
+    (tgiSummary.tambonRows || []).forEach((item) => {
+      lines.push(["Subdistrict Tracking", `${item.tambon} (${item.villageText})`, `${item.collected}/${item.samples}`]);
+    });
+    (tgiSummary.villageRows || []).forEach((item) => {
+      lines.push(["Village Tracking", `${item.tambon} หมู่ ${item.village}`, item.collected]);
+    });
+    (tgiSummary.studentRows || []).forEach((item) => {
+      lines.push(["Student Recorder Tracking", item.name, item.collected]);
+    });
+    lines.push(["Student Recorder Tracking", "ไม่ระบุผู้บันทึก", tgiSummary.unknownRecorderCount]);
+    const csv = lines.map(row => row.map(csvEscape).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `tgi-executive-summary-${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+  const tgiMetricRows = [
+    { label: lang==="th"?"ความพึงพอใจภาพรวม":"Overall satisfaction", value: tgiSummary.avgOverall, note: lang==="th"?"ใช้สรุปภาพรวมรายงานผู้บริหาร":"Executive summary indicator" },
+    { label: lang==="th"?"ความตระหนักด้านสิ่งแวดล้อม":"Environmental awareness", value: tgiSummary.avgAwareness, note: lang==="th"?"อ้างอิงส่วนที่ 9":"Based on Section 9" },
+    { label: lang==="th"?"การมีส่วนร่วม":"Participation", value: tgiSummary.avgParticipation, note: lang==="th"?"อ้างอิงส่วนที่ 10":"Based on Section 10" },
+    { label: lang==="th"?"พฤติกรรมเป็นมิตรต่อสิ่งแวดล้อม":"Eco-friendly behavior", value: tgiSummary.avgBehavior, note: lang==="th"?"อ้างอิงส่วนที่ 11":"Based on Section 11" },
+  ];
+  const tgiExecutiveBullets = [
+    lang==="th"
+      ? `มีข้อมูลแบบสอบถามทั้งหมด ${tgiSummary.total.toLocaleString("th-TH")} ชุด จากการเก็บข้อมูลชุมชนรอบพื้นที่ดำเนินงาน`
+      : `${tgiSummary.total.toLocaleString()} survey responses have been collected from community engagement activities.`,
+    lang==="th"
+      ? `คะแนนความพึงพอใจภาพรวมเฉลี่ยอยู่ที่ ${tgiSummary.avgOverall.toFixed(2)} / 5 อยู่ในระดับ ${tgiSummary.scoreLevel}`
+      : `Average overall satisfaction is ${tgiSummary.avgOverall.toFixed(2)} / 5, indicating ${tgiSummary.scoreLevel}.`,
+    lang==="th"
+      ? `ประเด็น CSR ที่ถูกเลือกมากสุดคือ ${tgiSummary.topFocus}`
+      : `The most selected CSR focus is ${tgiSummary.topFocus}.`,
+    lang==="th"
+      ? `ชุมชนที่มีจำนวนคำตอบสูงสุดคือ ${tgiSummary.topCommunityRows[0]?.label || "-"}`
+      : `The highest response volume is from ${tgiSummary.topCommunityRows[0]?.label || "-"}.`,
+  ];
 
   return (
     <div className="admin-wrap">
@@ -1360,9 +3951,9 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
           <BrandLogo className="admin-brand-mark" />
           <div className="admin-brand-sub">ADMIN PANEL</div>
         </div>
-        <div className="side-section">MENU</div>
+        <div className="side-section">{isTgiViewerOnly ? "REPORT" : "MENU"}</div>
         {sides.map(s => (
-          <button key={s.id} className={`side-item ${sec===s.id?"active":""}`} onClick={() => setSec(s.id)}>
+          <button key={s.id} className={`side-item ${activeSec===s.id?"active":""}`} onClick={() => setSec(s.id)}>
             <span style={{fontSize:16}}>{s.icon}</span> {s.lbl}
           </button>
         ))}
@@ -1370,12 +3961,12 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
 
       <main className="admin-main">
         {/* Dashboard */}
-        {sec==="dashboard" && (
+        {activeSec==="dashboard" && (
           <>
             <div className="adm-title">{t.adm_dash}</div>
             <div className="adm-sub">{t.welcome}</div>
             <div className="adm-stats">
-              {[["📝",articles.length,t.total_posts],["👥",experts.length,t.total_exp],["🏢",500,t.total_org],["🌿","18,500",t.total_co2]].map(([icon,n,l]) => (
+              {[["📝",articles.length,t.total_posts],["📁",(documents || []).length,lang==="th"?"เอกสาร":"Documents"],["👥",experts.length,t.total_exp],["🌿","18,500",t.total_co2]].map(([icon,n,l]) => (
                 <div className="adm-stat" key={l}>
                   <div className="adm-stat-icon">{icon}</div>
                   <div className="adm-stat-n">{typeof n==="number"&&n>999?n.toLocaleString():n}</div>
@@ -1398,7 +3989,7 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
         )}
 
         {/* Menus */}
-        {sec==="menus" && (
+        {activeSec==="menus" && (
           <>
             <div className="adm-toolbar">
               <div>
@@ -1439,7 +4030,7 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
         )}
 
         {/* Slides */}
-        {sec==="slides" && (
+        {activeSec==="slides" && (
           <>
             <div className="adm-toolbar">
               <div>
@@ -1480,7 +4071,7 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
         )}
 
         {/* Footer */}
-        {sec==="footer" && (
+        {activeSec==="footer" && (
           <>
             <div className="adm-toolbar">
               <div>
@@ -1510,9 +4101,11 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
                 <div className="form-grp"><label className="form-lbl">Description EN</label><textarea className="form-inp" rows={3} value={footer.description_en||""} onChange={e=>setFooterField("description_en", e.target.value)} /></div>
                 <div className="form-row">
                   <div className="form-grp"><label className="form-lbl">{t.email}</label><input className="form-inp" value={footer.email||""} onChange={e=>setFooterField("email", e.target.value)} /></div>
+                  <div className="form-grp"><label className="form-lbl">Email 2</label><input className="form-inp" value={footer.email2||""} onChange={e=>setFooterField("email2", e.target.value)} /></div>
                   <div className="form-grp"><label className="form-lbl">{lang==="th"?"โทรศัพท์":"Phone"}</label><input className="form-inp" value={footer.phone||""} onChange={e=>setFooterField("phone", e.target.value)} /></div>
                 </div>
                 <div className="form-grp"><label className="form-lbl">{t.location}</label><input className="form-inp" value={footer.location||""} onChange={e=>setFooterField("location", e.target.value)} /></div>
+                <div className="form-grp"><label className="form-lbl">{lang==="th"?"ที่อยู่ 2":"Location 2"}</label><input className="form-inp" value={footer.location2||""} onChange={e=>setFooterField("location2", e.target.value)} /></div>
                 <div className="form-grp"><label className="form-lbl">Copyright</label><input className="form-inp" value={footer.copyright||""} onChange={e=>setFooterField("copyright", e.target.value)} /></div>
               </div>
             </div>
@@ -1536,13 +4129,435 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
                   <label className="form-lbl">Legal Links: label_th|label_en|page</label>
                   <textarea className="form-inp" rows={5} value={encodePipeRows(footer.legalLinks, ["label_th","label_en","page"])} onChange={e=>setFooterField("legalLinks", decodePipeRows(e.target.value, ["label_th","label_en","page"]))} />
                 </div>
+                <div className="form-grp" style={{gridColumn:"1 / -1"}}>
+                  <label className="form-lbl">Partners: type|name|logo|url</label>
+                  <textarea className="form-inp" rows={4} value={encodePipeRows(footer.partners, ["type","name","logo","url"])} onChange={e=>setFooterField("partners", decodePipeRows(e.target.value, ["type","name","logo","url"]))} />
+                </div>
               </div>
             </div>
           </>
         )}
 
+        {/* CFO Review */}
+        {activeSec==="cfo" && (
+          <>
+            <div className="adm-toolbar">
+              <div>
+                <div className="adm-title">{lang==="th"?"ตรวจประเมิน CFO":"CFO Assessment Review"}</div>
+                <div className="adm-sub">{(cfoSubmissions || []).length} submissions · {(cfoSubmissions || []).filter(x => x.status === "submitted").length} pending</div>
+              </div>
+            </div>
+            <div className="tbl-wrap">
+              <table>
+                <thead>
+                  <tr><th>วันที่ส่ง</th><th>สมาชิก / องค์กร</th><th>ปี</th><th>Scope 1</th><th>Scope 2</th><th>Scope 3</th><th>Total</th><th>Status</th><th>{t.actions_col}</th></tr>
+                </thead>
+                <tbody>
+                  {(cfoSubmissions || []).length ? (cfoSubmissions || []).map(item => (
+                    <tr key={item.id}>
+                      <td>{new Date(item.created_at).toLocaleDateString("th-TH")}</td>
+                      <td>
+                        <div style={{fontWeight:700,color:"var(--g1)"}}>{item.organization_name || "-"}</div>
+                        <div style={{fontSize:12,color:"var(--muted)"}}>{item.user_email}</div>
+                      </td>
+                      <td>{item.reporting_year || "-"}</td>
+                      <td>{formatTon(item.result?.totals?.scope1)}</td>
+                      <td>{formatTon(item.result?.totals?.scope2)}</td>
+                      <td>{formatTon(item.result?.totals?.scope3)}</td>
+                      <td style={{fontWeight:800,color:"var(--g2)"}}>{formatTon(item.result?.total)} tCO2eq</td>
+                      <td><span className="badge">{CFO_STATUS_LABELS[item.status] || item.status}</span></td>
+                      <td>
+                        <div className="tbl-actions">
+                          <button className="btn-sm btn-edit" onClick={() => onReviewCfo(item.id, "approved", window.prompt("หมายเหตุผู้ตรวจ", item.review_note || "ตรวจสอบแล้ว ข้อมูลถูกต้อง") || "ตรวจสอบแล้ว ข้อมูลถูกต้อง")}>ยืนยันถูกต้อง</button>
+                          <button className="btn-sm btn-del" onClick={() => onReviewCfo(item.id, "needs_revision", window.prompt("ระบุสิ่งที่ต้องแก้ไข", item.review_note || "") || "กรุณาตรวจสอบข้อมูลและหลักฐานอีกครั้ง")}>ส่งกลับแก้ไข</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={9} style={{textAlign:"center",padding:28,color:"var(--muted)"}}>ยังไม่มีแบบประเมิน CFO ที่ส่งเข้ามา</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* TGI Survey */}
+        {activeSec==="tgi-survey" && (
+          <>
+            <div className="adm-toolbar">
+              <div>
+                <div className="adm-title">{lang==="th"?"รายงานแบบสอบถามความพึงพอใจ TGI":"TGI Satisfaction Survey Report"}</div>
+                <div className="adm-sub">
+                  {(tgiSurveyResponses || []).length} responses · {isFullAdmin
+                    ? (lang==="th"?"จัดเก็บ สรุปผล และส่งออกรายงาน":"store, summarize, and export survey data")
+                    : (lang==="th"?"สิทธิ์ดูรายงานเท่านั้น":"read-only report access")}
+                </div>
+              </div>
+              {isFullAdmin && (
+                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                  <button className="btn-ghost" onClick={importTgiCsv}>{lang==="th"?"นำเข้า CSV":"Import CSV"}</button>
+                  <button className="btn btn-dark" onClick={addTgiSurveySample}>{lang==="th"?"+ เพิ่มข้อมูล":"+ Add Response"}</button>
+                </div>
+              )}
+            </div>
+            <div className="tgi-report-actions no-print">
+              <div className="tgi-report-actions-title">{lang==="th"?"เลือกชุดรายงานที่ต้องการพิมพ์ / ส่งออก":"Choose report package to print / export"}</div>
+              <div className="tgi-report-action-grid">
+                <button className="btn btn-dark" onClick={exportTgiPdf}>{lang==="th"?"พิมพ์ Executive Summary (1 หน้า)":"Print Executive Summary (1 page)"}</button>
+                <button className="btn-ghost" onClick={exportTgiFullPdf}>{lang==="th"?"พิมพ์รายงานเต็ม":"Print Full Report"}</button>
+                <button className="btn-ghost" onClick={exportTgiRawPdf}>{lang==="th"?"พิมพ์ข้อมูลดิบ PDF":"Print Raw Data PDF"}</button>
+                <button className="btn-ghost" onClick={exportTgiSummaryCsv}>{lang==="th"?"Export สรุป Excel (CSV)":"Export Summary Excel (CSV)"}</button>
+                <button className="btn-ghost" onClick={exportTgiCsv}>{lang==="th"?"Export ข้อมูลดิบ Excel (CSV)":"Export Raw Excel (CSV)"}</button>
+              </div>
+            </div>
+            <div className="tgi-report-print">
+              <div className="tgi-report-hero tgi-exec-section">
+                <div className="tgi-report-kicker">TGI Community Satisfaction Survey</div>
+                <div className="tgi-report-title">{lang==="th"?"Executive Summary Dashboard":"Executive Summary Dashboard"}</div>
+                <div className="tgi-report-meta">
+                  {lang==="th"?"รายงานสรุปผลแบบสอบถามความพึงพอใจของชุมชนต่อกิจกรรม CSR และผลกระทบจากการดำเนินงานของบริษัท TGI (โรงแก้ว)":"Summary report of community satisfaction toward CSR activities and operational impacts of TGI."}
+                  <br />
+                  {lang==="th"?"วันที่จัดทำรายงาน":"Report date"}: {new Date().toLocaleDateString(lang==="th" ? "th-TH" : "en-US")} · {lang==="th"?"ข้อมูลล่าสุด":"Latest response"}: {tgiSummary.latestDate ? new Date(tgiSummary.latestDate).toLocaleDateString("th-TH") : "-"}
+                </div>
+                <div className="tgi-print-actions no-print">
+                  <button className="tgi-print-btn" onClick={exportTgiPdf}>
+                    {lang==="th"?"Executive Summary 1 หน้า":"Executive Summary 1 page"}
+                  </button>
+                  <button className="tgi-print-btn secondary" onClick={exportTgiSummaryCsv}>
+                    {lang==="th"?"Export สรุป Excel":"Export Summary Excel"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="adm-stats tgi-exec-section">
+                {[
+                  ["📋",tgiSummary.total,lang==="th"?"จำนวนคำตอบ":"Responses"],
+                  ["⭐",tgiSummary.avgOverall.toFixed(2),lang==="th"?"ความพึงพอใจเฉลี่ย":"Avg Satisfaction"],
+                  ["🌿",tgiSummary.avgAwareness.toFixed(2),lang==="th"?"ความตระหนักเฉลี่ย":"Avg Awareness"],
+                  ["🎯",tgiSummary.topFocus,lang==="th"?"CSR ที่ถูกเลือกมากสุด":"Top CSR Focus"],
+                ].map(([icon,n,l]) => (
+                  <div className="adm-stat" key={l}>
+                    <div className="adm-stat-icon">{icon}</div>
+                    <div className="adm-stat-n" style={{fontSize:String(n).length > 12 ? 18 : 28}}>{n}</div>
+                    <div className="adm-stat-l">{l}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="tgi-executive-grid tgi-exec-section">
+                <div className="tgi-panel">
+                  <div className="tgi-panel-title">{lang==="th"?"Executive Summary":"Executive Summary"}</div>
+                  <ul className="tgi-summary-list">
+                    {tgiExecutiveBullets.map(item => <li key={item}>{item}</li>)}
+                  </ul>
+                </div>
+                <div className="tgi-panel">
+                  <div className="tgi-panel-title">{lang==="th"?"คะแนนภาพรวม":"Overall Score"}</div>
+                  <div className="tgi-score-ring" style={{"--score": Math.min(100, Math.max(0, tgiSummary.avgOverall / 5 * 100))}}>
+                    <div className="tgi-score-ring-inner">
+                      <div className="tgi-score-number">{tgiSummary.avgOverall.toFixed(2)}</div>
+                      <div className="tgi-score-label">/ 5 · {tgiSummary.scoreLevel}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="tgi-panel tgi-detail-section">
+                <div className="tgi-panel-title">{lang==="th"?"คะแนนตัวชี้วัดหลัก":"Key Indicator Scores"}</div>
+                <div className="tgi-bar-list">
+                  {tgiMetricRows.map(metric => (
+                    <div className="tgi-bar-row" key={metric.label}>
+                      <div>{metric.label}</div>
+                      <div className="tgi-bar-track"><div className="tgi-bar-fill" style={{width:`${Math.min(100, Math.max(0, metric.value / 5 * 100))}%`}} /></div>
+                      <strong>{metric.value.toFixed(2)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="tgi-dist-grid tgi-detail-section">
+                {[
+                  [lang==="th"?"ชุมชนที่ตอบมากสุด":"Top Communities", tgiSummary.topCommunityRows],
+                  [lang==="th"?"นิสิตผู้บันทึก":"Student Recorders", tgiSummary.topRecorderRows],
+                  [lang==="th"?"ประเด็น CSR ที่เลือก":"CSR Focus", tgiSummary.topFocusRows],
+                ].map(([title, rows]) => (
+                  <div className="tgi-panel" key={title}>
+                    <div className="tgi-panel-title">{title}</div>
+                    <div className="tgi-rank-list">
+                      {(rows || []).length ? rows.map(item => (
+                        <div className="tgi-rank-item" key={item.label}>
+                          <span className="tgi-rank-label">{item.label}</span>
+                          <span className="tgi-rank-count">{item.count}</span>
+                        </div>
+                      )) : <div style={{color:"var(--muted)",fontSize:13}}>{lang==="th"?"ยังไม่มีข้อมูล":"No data"}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="tgi-panel tgi-detail-section">
+                <div className="tgi-panel-title">{lang==="th"?"แผนการเก็บข้อมูลภาคสนาม":"Field Data Collection Plan"}</div>
+                <div className="tgi-field-kpis">
+                  {[
+                    [lang==="th"?"พื้นที่ศึกษา":"Study Area", TGI_FIELD_PLAN.areaCount, lang==="th"?"ตำบล":"subdistricts"],
+                    [lang==="th"?"จำนวนหมู่":"Villages", TGI_FIELD_PLAN.villageCount, lang==="th"?"หมู่":"villages"],
+                    [lang==="th"?"ครัวเรือนประมาณการ":"Estimated Households", TGI_FIELD_PLAN.householdCount.toLocaleString("th-TH"), lang==="th"?"ครัวเรือน":"households"],
+                    [lang==="th"?"กลุ่มตัวอย่างรวม":"Total Samples", TGI_FIELD_PLAN.sampleCount.toLocaleString("th-TH"), lang==="th"?"ราย":"responses"],
+                    [lang==="th"?"นิสิตลงพื้นที่":"Field Students", TGI_FIELD_PLAN.studentCount, lang==="th"?"คน":"students"],
+                  ].map(([label, value, unit]) => (
+                    <div className="tgi-field-kpi" key={label}>
+                      <div className="tgi-field-kpi-label">{label}</div>
+                      <div className="tgi-field-kpi-value">{value}</div>
+                      <div className="tgi-field-kpi-unit">{unit}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="tbl-wrap" style={{boxShadow:"none",borderRadius:12,marginBottom:12}}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{lang==="th"?"ลำดับ":"No."}</th>
+                        <th>{lang==="th"?"ตำบล":"Subdistrict"}</th>
+                        <th>{lang==="th"?"จำนวนหมู่":"Villages"}</th>
+                        <th>{lang==="th"?"ครัวเรือน (ประมาณการ)":"Households"}</th>
+                        <th>{lang==="th"?"สัดส่วน (%)":"Ratio"}</th>
+                        <th>{lang==="th"?"ตัวอย่าง (ราย)":"Samples"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {TGI_FIELD_PLAN.rows.map(row => (
+                        <tr key={row.order}>
+                          <td>{row.order}</td>
+                          <td style={{fontWeight:800,color:"var(--g1)"}}>{row.tambon} ({row.villageText})</td>
+                          <td>{row.villages}</td>
+                          <td>{row.households.toLocaleString("th-TH")}</td>
+                          <td>{row.ratio}</td>
+                          <td style={{fontWeight:900,color:"#1D4ED8"}}>{row.samples}</td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td colSpan={2} style={{fontWeight:900,color:"var(--g1)"}}>{lang==="th"?"รวม":"Total"}</td>
+                        <td style={{fontWeight:900}}>{TGI_FIELD_PLAN.villageCount}</td>
+                        <td style={{fontWeight:900}}>{TGI_FIELD_PLAN.householdCount.toLocaleString("th-TH")}</td>
+                        <td style={{fontWeight:900}}>100.0%</td>
+                        <td style={{fontWeight:900,color:"#1D4ED8"}}>{TGI_FIELD_PLAN.sampleCount}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="tgi-schedule-list">
+                  {TGI_FIELD_PLAN.schedules.map(item => (
+                    <span className="tgi-schedule-pill" key={item.date}>
+                      {item.date}: {item.students} {lang==="th"?"คน":"students"}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="tgi-panel tgi-detail-section">
+                <div className="tgi-panel-title">{lang==="th"?"ติดตามจำนวนคำตอบจริงตามตำบลและหมู่":"Actual Response Tracking by Subdistrict and Village"}</div>
+                <div className="tbl-wrap" style={{boxShadow:"none",borderRadius:12,marginBottom:12}}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{lang==="th"?"ตำบล":"Subdistrict"}</th>
+                        <th>{lang==="th"?"จำนวนหมู่":"Villages"}</th>
+                        <th>{lang==="th"?"เป้าหมาย (ราย)":"Target"}</th>
+                        <th>{lang==="th"?"เก็บแล้ว (ราย)":"Collected"}</th>
+                        <th>{lang==="th"?"คงเหลือ":"Remaining"}</th>
+                        <th>{lang==="th"?"ความคืบหน้า":"Progress"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tgiSummary.tambonRows.map(row => (
+                        <tr key={row.tambon}>
+                          <td style={{fontWeight:900,color:"var(--g1)"}}>{row.tambon} ({row.villageText})</td>
+                          <td>{row.villages}</td>
+                          <td>{row.samples}</td>
+                          <td style={{fontWeight:900,color:"#047857"}}>{row.collected}</td>
+                          <td>{row.remaining}</td>
+                          <td>
+                            <div className="tgi-bar-track" style={{minWidth:120}}><div className="tgi-bar-fill" style={{width:`${row.progress}%`}} /></div>
+                            <div style={{fontSize:12,color:"var(--muted)",marginTop:4}}>{row.progress.toFixed(1)}%</div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="tbl-wrap" style={{boxShadow:"none",borderRadius:12}}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{lang==="th"?"ตำบล":"Subdistrict"}</th>
+                        <th>{lang==="th"?"หมู่":"Village"}</th>
+                        <th>{lang==="th"?"คำตอบที่เก็บได้ (ราย)":"Collected Responses"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tgiSummary.villageRows.map(row => (
+                        <tr key={`${row.tambon}-${row.village}`}>
+                          <td>{row.tambon}</td>
+                          <td>หมู่ {row.village}</td>
+                          <td style={{fontWeight:900,color:"#1D4ED8"}}>{row.collected}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="tgi-panel tgi-detail-section">
+                <div className="tgi-panel-title">{lang==="th"?"ติดตามผู้บันทึกแบบสอบถาม":"Student Recorder Tracking"}</div>
+                {tgiSummary.unknownRecorderCount > 0 && (
+                  <div className="survey-message error" style={{marginBottom:12}}>
+                    {lang==="th"
+                      ? `พบข้อมูล ${tgiSummary.unknownRecorderCount} ชุดที่ยังไม่ระบุรายชื่อนิสิตผู้บันทึก กรุณาตรวจสอบเพื่อป้องกัน error ของข้อมูล`
+                      : `${tgiSummary.unknownRecorderCount} responses have no student recorder. Please review data quality.`}
+                  </div>
+                )}
+                <div className="tbl-wrap" style={{boxShadow:"none",borderRadius:12}}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>{lang==="th"?"รายชื่อนิสิต":"Student"}</th>
+                        <th>{lang==="th"?"จำนวนแบบสอบถามที่บันทึก":"Recorded Responses"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tgiSummary.studentRows.map(row => (
+                        <tr key={row.name}>
+                          <td style={{fontWeight:800,color:"var(--g1)"}}>{row.name}</td>
+                          <td style={{fontWeight:900,color:"#047857"}}>{row.collected}</td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td style={{fontWeight:900,color:"#991B1B"}}>{lang==="th"?"ไม่ระบุผู้บันทึก":"Unspecified recorder"}</td>
+                        <td style={{fontWeight:900,color:"#991B1B"}}>{tgiSummary.unknownRecorderCount}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="tbl-wrap tgi-detail-section" style={{marginBottom:18}}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{lang==="th"?"ตัวชี้วัด":"Metric"}</th>
+                      <th>{lang==="th"?"ค่าเฉลี่ย":"Average"}</th>
+                      <th>{lang==="th"?"หมายเหตุ":"Note"}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tgiMetricRows.map(metric => (
+                      <tr key={metric.label}>
+                        <td>{metric.label}</td>
+                        <td>{metric.value.toFixed(2)} / 5</td>
+                        <td>{metric.note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="tbl-wrap tgi-raw-section">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{lang==="th"?"วันที่":"Date"}</th>
+                      <th>{lang==="th"?"นิสิตผู้บันทึก":"Recorder"}</th>
+                      <th>{lang==="th"?"ตำบล":"Subdistrict"}</th>
+                      <th>{lang==="th"?"หมู่":"Village"}</th>
+                      <th>{lang==="th"?"ผู้ตอบ / ชุมชน":"Respondent / Community"}</th>
+                      <th>{lang==="th"?"ภาพรวม":"Overall"}</th>
+                      <th>{lang==="th"?"ตระหนัก":"Awareness"}</th>
+                      <th>{lang==="th"?"มีส่วนร่วม":"Participation"}</th>
+                      <th>{lang==="th"?"พฤติกรรม":"Behavior"}</th>
+                      <th>{lang==="th"?"CSR Focus":"CSR Focus"}</th>
+                      <th>{lang==="th"?"ข้อเสนอแนะ":"Suggestion"}</th>
+                      {isFullAdmin && <th>{t.actions_col}</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(tgiSurveyResponses || []).length ? (tgiSurveyResponses || []).map(row => (
+                      <tr key={row.id}>
+                        <td>{row.created_at ? new Date(row.created_at).toLocaleDateString("th-TH") : "-"}</td>
+                        <td>{tgiRecorderName(row)}</td>
+                        <td>{tgiTambonName(row)}</td>
+                        <td>{tgiVillageNo(row) ? `หมู่ ${tgiVillageNo(row)}` : "-"}</td>
+                        <td>
+                          <div style={{fontWeight:700,color:"var(--g1)"}}>{row.respondent_name || "-"}</div>
+                          <div style={{fontSize:12,color:"var(--muted)"}}>{row.community || "-"}</div>
+                        </td>
+                        <td>{Number(row.overall_score || 0).toFixed(1)}</td>
+                        <td>{Number(row.awareness_score || 0).toFixed(1)}</td>
+                        <td>{Number(row.participation_score || 0).toFixed(1)}</td>
+                        <td>{Number(row.behavior_score || 0).toFixed(1)}</td>
+                        <td><span className="badge">{row.csr_focus || "-"}</span></td>
+                        <td style={{maxWidth:260,whiteSpace:"normal",lineHeight:1.55}}>{row.suggestion || "-"}</td>
+                        {isFullAdmin && <td><button className="btn-sm btn-del" onClick={() => onDeleteTgiSurvey(row.id)}>{t.del}</button></td>}
+                      </tr>
+                    )) : (
+                      <tr><td colSpan={isFullAdmin ? 12 : 11} style={{textAlign:"center",padding:28,color:"var(--muted)"}}>{lang==="th"?"ยังไม่มีข้อมูลแบบสอบถาม TGI":"No TGI survey data yet."}</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Documents */}
+        {activeSec==="documents" && (
+          <>
+            <div className="adm-toolbar">
+              <div>
+                <div className="adm-title">{lang==="th"?"Download Manager":"Download Manager"}</div>
+                <div className="adm-sub">{(documents || []).length} documents · {(documents || []).filter(d => d.active !== false).length} active</div>
+              </div>
+              <button className="btn btn-dark" onClick={() => openModal("document")}>{lang==="th"?"+ เพิ่มเอกสาร":"+ Add Document"}</button>
+            </div>
+            <div className="tbl-wrap">
+              <table>
+                <thead><tr><th>#</th><th>{lang==="th"?"เอกสาร":"Document"}</th><th>{t.category}</th><th>File</th><th>Updated</th><th>Status</th><th>{t.actions_col}</th></tr></thead>
+                <tbody>
+                  {(documents || []).map((d,i) => (
+                    <tr key={d.id}>
+                      <td style={{color:"var(--muted)"}}>{i+1}</td>
+                      <td>
+                        <div style={{fontWeight:700,color:"var(--g1)"}}>{lang==="th" ? d.title_th : d.title_en}</div>
+                        <div style={{fontSize:12,color:"var(--muted)"}}>{d.description_th || d.description_en}</div>
+                      </td>
+                      <td><span className="badge">{d.category}</span></td>
+                      <td>
+                        <div style={{fontWeight:600}}>{d.file_name || "-"}</div>
+                        <div style={{fontSize:12,color:"var(--muted)"}}>{d.file_type || "FILE"} · {formatDocSize(d.file_size)}</div>
+                      </td>
+                      <td>{d.updated_at || "-"}</td>
+                      <td>
+                        <button className="btn-sm" style={{background:d.active!==false?"#DCFCE7":"#F3F4F6",color:d.active!==false?"#166534":"#6B7280"}} onClick={() => setDocuments(p => p.map(x => x.id===d.id ? {...x,active:x.active===false} : x))}>
+                          {d.active!==false ? "Active" : "Hidden"}
+                        </button>
+                      </td>
+                      <td>
+                        <div className="tbl-actions">
+                          <a className="btn-sm btn-edit" href={docHref(d)} download={d.file_data_url ? (d.file_name || true) : undefined} target={d.file_data_url ? undefined : "_blank"} rel="noreferrer" style={{textDecoration:"none",opacity:docHref(d)==="#" ? .45 : 1}}>Test</a>
+                          <button className="btn-sm btn-edit" onClick={() => openModal("document",d)}>{t.edit}</button>
+                          <button className="btn-sm btn-del" onClick={() => del("document",d.id)}>{t.del}</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
         {/* Posts */}
-        {sec==="posts" && (
+        {activeSec==="posts" && (
           <>
             <div className="adm-toolbar">
               <div>
@@ -1572,7 +4587,7 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
         )}
 
         {/* Experts */}
-        {sec==="experts" && (
+        {activeSec==="experts" && (
           <>
             <div className="adm-toolbar">
               <div>
@@ -1602,17 +4617,92 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
         )}
 
         {/* Users */}
-        {sec==="users" && (
+        {activeSec==="users" && (
           <>
             <div className="adm-title">{t.adm_users}</div>
-            <div className="adm-sub" style={{marginBottom:20}}>3 users</div>
+            <div className="adm-sub" style={{marginBottom:20}}>
+              {lang==="th"
+                ? "เพิ่มผู้ใช้งานและกำหนดสิทธิ์การใช้งานในระบบ"
+                : "Add users and assign system access roles."}
+            </div>
+            <div className="card" style={{padding:18,marginBottom:18,borderRadius:12}}>
+              <div className="form-row">
+                <div className="form-grp">
+                  <label className="form-lbl">{t.email}</label>
+                  <input className="form-inp" type="email" value={userForm.email} onChange={e=>setUserForm(f=>({...f,email:e.target.value}))} placeholder="user@company.com" />
+                </div>
+                <div className="form-grp">
+                  <label className="form-lbl">{t.name_col}</label>
+                  <input className="form-inp" value={userForm.full_name} onChange={e=>setUserForm(f=>({...f,full_name:e.target.value}))} placeholder={lang==="th"?"ชื่อผู้ใช้งาน":"User name"} />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-grp">
+                  <label className="form-lbl">{lang==="th"?"องค์กร":"Organization"}</label>
+                  <input className="form-inp" value={userForm.organization} onChange={e=>setUserForm(f=>({...f,organization:e.target.value}))} placeholder={lang==="th"?"บริษัท / หน่วยงาน":"Company / organization"} />
+                </div>
+                <div className="form-grp">
+                  <label className="form-lbl">Role</label>
+                  <select className="form-inp" value={userForm.role} onChange={e=>setUserForm(f=>({...f,role:e.target.value}))}>
+                    {USER_ROLE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-grp">
+                  <label className="form-lbl">Status</label>
+                  <select className="form-inp" value={userForm.status} onChange={e=>setUserForm(f=>({...f,status:e.target.value}))}>
+                    <option value="active">Active</option>
+                    <option value="disabled">Disabled</option>
+                  </select>
+                </div>
+                <div className="form-grp">
+                  <label className="form-lbl">{lang==="th"?"หมายเหตุ":"Note"}</label>
+                  <input className="form-inp" value={userForm.note} onChange={e=>setUserForm(f=>({...f,note:e.target.value}))} />
+                </div>
+              </div>
+              <button className="btn btn-dark" onClick={addUserRole}>{lang==="th"?"เพิ่ม / บันทึกผู้ใช้งาน":"Add / Save User"}</button>
+              <div className="form-hint" style={{marginTop:12,textAlign:"left"}}>
+                {lang==="th"
+                  ? "หมายเหตุ: ฟอร์มนี้กำหนดสิทธิ์ในระบบ VerdiX เท่านั้น ไม่ได้สร้างบัญชี Auth หรือกำหนดรหัสผ่านแทนผู้ใช้ ผู้ใช้ต้องสมัคร/ตั้งรหัสผ่านเอง หรือใช้ปุ่มส่งลิงก์ตั้งรหัสผ่านถ้าบัญชี Auth มีอยู่แล้ว"
+                  : "Note: This assigns VerdiX roles only. It does not create an Auth account or set a user's password. Users must register/set their own password, or use the reset-link button if the Auth account already exists."}
+              </div>
+            </div>
             <div className="tbl-wrap">
               <table>
-                <thead><tr><th>#</th><th>{t.name_col}</th><th>{t.email}</th><th>Role</th><th>Status</th></tr></thead>
+                <thead><tr><th>#</th><th>{t.name_col}</th><th>{t.email}</th><th>{lang==="th"?"องค์กร":"Organization"}</th><th>Role</th><th>Status</th><th>{lang==="th"?"จัดการ":"Action"}</th></tr></thead>
                 <tbody>
-                  {[{n:"Admin VerdiX",e:"admin@verdix.com",r:"Admin"},{n:"Demo User",e:"demo@company.com",r:"User"},{n:"Somchai K.",e:"somchai@factory.co.th",r:"User"}].map((u,i) => (
-                    <tr key={i}><td>{i+1}</td><td style={{fontWeight:600}}>{u.n}</td><td>{u.e}</td><td><span className="badge">{u.r}</span></td><td style={{color:"#16A34A",fontWeight:600}}>● Active</td></tr>
+                  {(userRoles || []).map((u,i) => (
+                    <tr key={u.id || u.email}>
+                      <td>{i+1}</td>
+                      <td style={{fontWeight:600}}>{u.full_name || "-"}</td>
+                      <td>{u.email}</td>
+                      <td>{u.organization || "-"}</td>
+                      <td>
+                        <select className="form-inp" value={u.role || "standard_user"} onChange={e=>updateUserRole(u,"role",e.target.value)}>
+                          {USER_ROLE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </td>
+                      <td>
+                        <select className="form-inp" value={u.status || "active"} onChange={e=>updateUserRole(u,"status",e.target.value)}>
+                          <option value="active">Active</option>
+                          <option value="disabled">Disabled</option>
+                        </select>
+                      </td>
+                      <td>
+                        <div className="tbl-actions">
+                          <button className="btn-sm btn-edit" onClick={() => onSendPasswordSetup(u.email)}>{lang==="th"?"ส่งลิงก์ตั้งรหัส":"Send reset"}</button>
+                          <button className="btn-sm" onClick={() => copyUserInvite(u)}>{lang==="th"?"คัดลอกคำเชิญ":"Copy invite"}</button>
+                          <button className="btn-sm btn-del" onClick={() => onDeleteUserRole(u)}>{t.del}</button>
+                        </div>
+                      </td>
+                    </tr>
                   ))}
+                  {!(userRoles || []).length && (
+                    <tr><td colSpan="7" style={{textAlign:"center",color:"var(--muted)",padding:28}}>
+                      {lang==="th"?"ยังไม่มีข้อมูลผู้ใช้งาน":"No user role records yet."}
+                    </td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1625,8 +4715,8 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
         <div className="overlay" onClick={e => e.target===e.currentTarget && setModal(null)}>
           <div className="modal">
             <h3 className="modal-title">
-              {modal.item ? `${t.edit}` : (modal.type==="post" ? t.add_post : t.add_exp)}
-              {" "}{modal.type==="post" ? (lang==="th"?"บทความ":"Post") : modal.type==="expert" ? (lang==="th"?"ผู้เชี่ยวชาญ":"Expert") : (lang==="th"?"Slide":"Slide")}
+              {modal.item ? `${t.edit}` : (modal.type==="post" ? t.add_post : modal.type==="document" ? (lang==="th"?"+ เพิ่มเอกสาร":"+ Add Document") : t.add_exp)}
+              {" "}{modal.type==="post" ? (lang==="th"?"บทความ":"Post") : modal.type==="document" ? (lang==="th"?"เอกสาร":"Document") : modal.type==="expert" ? (lang==="th"?"ผู้เชี่ยวชาญ":"Expert") : (lang==="th"?"Slide":"Slide")}
             </h3>
             {modal.type==="post" ? (
               <>
@@ -1642,6 +4732,37 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
                   </div>
                   <div className="form-grp"><label className="form-lbl">{t.author}</label><input className="form-inp" value={form.author||""} onChange={e=>setForm(f=>({...f,author:e.target.value}))} /></div>
                 </div>
+              </>
+            ) : modal.type==="document" ? (
+              <>
+                <div className="form-row">
+                  <div className="form-grp"><label className="form-lbl">Title TH</label><input className="form-inp" value={form.title_th||""} onChange={e=>setForm(f=>({...f,title_th:e.target.value}))} /></div>
+                  <div className="form-grp"><label className="form-lbl">Title EN</label><input className="form-inp" value={form.title_en||""} onChange={e=>setForm(f=>({...f,title_en:e.target.value}))} /></div>
+                </div>
+                <div className="form-grp"><label className="form-lbl">Description TH</label><textarea className="form-inp" rows={3} value={form.description_th||""} onChange={e=>setForm(f=>({...f,description_th:e.target.value}))} /></div>
+                <div className="form-grp"><label className="form-lbl">Description EN</label><textarea className="form-inp" rows={3} value={form.description_en||""} onChange={e=>setForm(f=>({...f,description_en:e.target.value}))} /></div>
+                <div className="form-row">
+                  <div className="form-grp"><label className="form-lbl">{t.category}</label>
+                    <select className="form-inp" value={form.category||"Eco Factory"} onChange={e=>setForm(f=>({...f,category:e.target.value}))}>
+                      {DOC_CATEGORIES.filter(c => c !== "All").map(c=><option key={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="form-grp"><label className="form-lbl">Version</label><input className="form-inp" value={form.version||""} onChange={e=>setForm(f=>({...f,version:e.target.value}))} /></div>
+                </div>
+                <div className="form-row">
+                  <div className="form-grp"><label className="form-lbl">File Type</label><input className="form-inp" value={form.file_type||""} onChange={e=>setForm(f=>({...f,file_type:e.target.value}))} placeholder="PDF, XLSX, DOCX" /></div>
+                  <div className="form-grp"><label className="form-lbl">Updated Date</label><input className="form-inp" type="date" value={form.updated_at||""} onChange={e=>setForm(f=>({...f,updated_at:e.target.value}))} /></div>
+                </div>
+                <div className="form-grp"><label className="form-lbl">{lang==="th"?"อัปโหลดไฟล์เอกสาร":"Upload document file"}</label><input className="form-inp" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.zip" onChange={e=>handleDocumentFile(e.target.files?.[0])} /></div>
+                <div className="form-row">
+                  <div className="form-grp"><label className="form-lbl">File Name</label><input className="form-inp" value={form.file_name||""} onChange={e=>setForm(f=>({...f,file_name:e.target.value}))} /></div>
+                  <div className="form-grp"><label className="form-lbl">File Size (bytes)</label><input className="form-inp" type="number" value={form.file_size||0} onChange={e=>setForm(f=>({...f,file_size:e.target.value}))} /></div>
+                </div>
+                <div className="form-grp"><label className="form-lbl">{lang==="th"?"หรือใส่ URL ไฟล์ภายนอก":"Or external file URL"}</label><input className="form-inp" value={form.file_url||""} onChange={e=>setForm(f=>({...f,file_url:e.target.value,file_data_url:f.file_data_url||""}))} placeholder="https://..." /></div>
+                <label style={{display:"flex",alignItems:"center",gap:10,fontSize:14,fontWeight:600,color:"var(--g1)",marginTop:4}}>
+                  <input type="checkbox" checked={form.active!==false} onChange={e=>setForm(f=>({...f,active:e.target.checked}))} />
+                  {lang==="th"?"แสดงเอกสารนี้บนหน้า Download":"Show this document"}
+                </label>
               </>
             ) : modal.type==="expert" ? (
               <>
@@ -1687,7 +4808,20 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
                 </div>
                 <div className="form-grp"><label className="form-lbl">{lang==="th"?"รายละเอียด (ไทย)":"Subtitle (TH)"}</label><textarea className="form-inp" rows={3} value={form.subtitle_th||""} onChange={e=>setForm(f=>({...f,subtitle_th:e.target.value}))} /></div>
                 <div className="form-grp"><label className="form-lbl">{lang==="th"?"รายละเอียด (อังกฤษ)":"Subtitle (EN)"}</label><textarea className="form-inp" rows={3} value={form.subtitle_en||""} onChange={e=>setForm(f=>({...f,subtitle_en:e.target.value}))} /></div>
-                <div className="form-grp"><label className="form-lbl">{lang==="th"?"รูปภาพพื้นหลัง (URL)":"Background image URL"}</label><input className="form-inp" value={form.image||""} onChange={e=>setForm(f=>({...f,image:e.target.value}))} /></div>
+                <div className="form-grp">
+                  <label className="form-lbl">{lang==="th"?"รูปภาพพื้นหลัง Slide":"Slide background image"}</label>
+                  <input className="form-inp" value={form.image||""} onChange={e=>setForm(f=>({...f,image:e.target.value}))} placeholder={lang==="th"?"วาง URL รูป หรือเลือกไฟล์ด้านล่าง":"Paste image URL or choose a file below"} />
+                  <input className="form-inp" type="file" accept="image/*" onChange={handleSlideImageUpload} style={{marginTop:10}} />
+                  <div style={{fontSize:12,color:"var(--muted)",lineHeight:1.6,marginTop:8}}>
+                    {lang==="th"?"แนะนำรูปแนวนอนอัตราส่วน 16:7 หรือ 16:9 ขนาดประมาณ 1600x700 px เพื่อให้พอดีกับ slideshow ใหม่":"Recommended landscape image ratio 16:7 or 16:9, around 1600x700 px for the new slideshow."}
+                  </div>
+                  {form.image && (
+                    <div style={{marginTop:12,border:"1px solid var(--border)",borderRadius:10,overflow:"hidden",background:"#F8FAFC"}}>
+                      <div style={{height:120,backgroundImage:`url(${form.image})`,backgroundSize:"cover",backgroundPosition:"center"}} />
+                      {form.image_name && <div style={{fontSize:12,color:"var(--muted)",padding:"8px 10px"}}>{form.image_name}</div>}
+                    </div>
+                  )}
+                </div>
                 <div className="form-row">
                   <div className="form-grp"><label className="form-lbl">{lang==="th"?"ปุ่มหลัก":"Primary CTA"}</label><input className="form-inp" value={lang==="th"?(form.primary_th||""):(form.primary_en||"")} onChange={e=>setForm(f=>lang==="th"?({...f,primary_th:e.target.value}):({...f,primary_en:e.target.value}))} /></div>
                   <div className="form-grp"><label className="form-lbl">{lang==="th"?"ลิงก์ปุ่มหลัก":"Primary page"}</label><input className="form-inp" value={form.primary_page||""} onChange={e=>setForm(f=>({...f,primary_page:e.target.value}))} placeholder="register" /></div>
@@ -1714,11 +4848,15 @@ function AdminPanel({ t, lang, articles, setArticles, experts, setExperts, slide
 }
 
 // ─── Carbon Page (CFO / CFP / Net Zero) ──────────────────────
-function CarbonPage({ lang, nav }) {
-  const [tab, setTab] = useState("overview");
+function CarbonPage({ lang, nav, initialTab = "overview" }) {
+  const [tab, setTab] = useState(initialTab);
   const [cfoForm, setCfoForm] = useState({elec:"",fuel_diesel:"",fuel_lng:"",fuel_lpg:"",vehicle:"",waste:"",water:"",purchased_goods:"",travel:""});
   const [cfoResult, setCfoResult] = useState(null);
   const L = (th,en) => lang==="th"?th:en;
+
+  useEffect(() => {
+    setTab(initialTab || "overview");
+  }, [initialTab]);
 
   const subNav = [
     {id:"overview",th:"ภาพรวม",en:"Overview"},
@@ -2491,7 +5629,7 @@ function EnvironmentPage({ lang, nav }) {
 }
 
 // ─── Eco Factory Page ─────────────────────────────────────────
-function EcoFactoryPage({ lang, nav }) {
+function EcoFactoryPage({ lang, nav, initialTab = "home" }) {
   const [tab, setTab] = useState("home");
   const [appStep, setAppStep] = useState(1);
   const [appForm, setAppForm] = useState({
@@ -2503,12 +5641,17 @@ function EcoFactoryPage({ lang, nav }) {
   const [appSubmitted, setAppSubmitted] = useState(false);
   const setF = (k,v) => setAppForm(p=>({...p,[k]:v}));
 
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
+
   const subNav = [
     {id:"home",   th:"หน้าหลัก",        en:"Overview"},
-    {id:"guide",  th:"หลักเกณฑ์",       en:"Guidelines"},
+    {id:"guide",  th:"หลักเกณฑ์ ECO FACTORY", en:"Eco Factory Criteria"},
+    {id:"news",   th:"ประชาสัมพันธ์",   en:"News & PR"},
     {id:"benefit",th:"สิทธิประโยชน์",    en:"Benefits"},
-    {id:"process",th:"ขั้นตอนการสมัคร", en:"Process"},
-    {id:"apply",  th:"สมัครรับรอง",      en:"Apply Now"},
+    {id:"process",th:"ขั้นตอนและตารางประชุม", en:"Process & Meeting Schedule"},
+    {id:"apply",  th:"ขอขึ้นทะเบียนรับรอง", en:"Certification Registration"},
     {id:"db",     th:"ฐานข้อมูล",        en:"Database"},
   ];
 
@@ -2563,10 +5706,10 @@ function EcoFactoryPage({ lang, nav }) {
   ];
 
   const consultants = [
-    {name:"รศ.ดร. โกวิท สุวรรณหงษ์", area:"Eco-Factory, ESG, EIA", org:"ม.บูรพา"},
-    {name:"ดร. ณัฐวี พงษ์อาจารย์",    area:"Carbon Footprint, Energy", org:"VERDIX"},
-    {name:"คุณสมชาย ตรีรัตน์",        area:"ISO 14001, Waste Management", org:"อิสระ"},
-    {name:"ดร. วนิดา ศรีสาทิตย์",     area:"GRI, ESG Reporting", org:"อิสระ"},
+    {name:"ผู้เชี่ยวชาญ Eco-Factory", area:"Eco-Factory, ESG, EIA", org:"VERDIX Network"},
+    {name:"ผู้เชี่ยวชาญ Carbon Footprint", area:"Carbon Footprint, Energy", org:"VERDIX Network"},
+    {name:"ผู้เชี่ยวชาญ ISO 14001", area:"ISO 14001, Waste Management", org:"VERDIX Network"},
+    {name:"ผู้เชี่ยวชาญ ESG Reporting", area:"GRI, ESG Reporting", org:"VERDIX Network"},
   ];
 
   const inputSt = {width:"100%",padding:"10px 14px",border:"1.5px solid var(--border)",borderRadius:8,fontSize:14,marginTop:6};
@@ -2697,6 +5840,39 @@ function EcoFactoryPage({ lang, nav }) {
                 style={{marginLeft:"auto",background:"var(--g1)",color:"white",padding:"8px 18px",borderRadius:7,fontSize:13,fontWeight:600,textDecoration:"none",whiteSpace:"nowrap"}}>
                 {lang==="th"?"ดาวน์โหลด":"Download"}
               </a>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── TAB: NEWS & PR ── */}
+      {tab==="news" && (
+        <section className="section">
+          <div className="container">
+            <div style={{textAlign:"center",marginBottom:44}}>
+              <span className="section-tag">● ECO FACTORY NEWS</span>
+              <h2 className="section-title">{lang==="th"?"ประชาสัมพันธ์ Eco Factory":"Eco Factory News & PR"}</h2>
+              <p className="section-sub" style={{margin:"0 auto"}}>
+                {lang==="th"
+                  ?"ข่าวสาร กำหนดการ และประกาศสำคัญสำหรับโรงงานที่ต้องการเตรียมความพร้อมหรือขอรับรอง Eco Factory"
+                  :"Updates, schedules, and announcements for factories preparing for Eco Factory certification."}
+              </p>
+            </div>
+            <div className="grid-3" style={{gap:20}}>
+              {[
+                {tag:"2569",title_th:"เปิดรอบประชุมรับรอง Eco Factory ประจำปี 2569",title_en:"2026 Eco Factory certification meeting rounds are open",desc_th:"ตรวจสอบกำหนดส่งใบสมัคร ชำระเงิน และรอบประชุมรับรองได้ในหน้า ขั้นตอนและตารางประชุม",desc_en:"Check application, payment, and certification meeting dates in the Process & Meeting Schedule section."},
+                {tag:"VERDIX",title_th:"VERDIX รองรับการเตรียมเอกสารและ Gap Analysis",title_en:"VERDIX supports documentation and Gap Analysis",desc_th:"เริ่มจากแบบประเมินออนไลน์ จับคู่ผู้เชี่ยวชาญ และจัดเตรียมหลักฐานก่อนยื่นรับรอง",desc_en:"Start with online assessment, expert matching, and evidence preparation before certification submission."},
+                {tag:"IoT",title_th:"เชื่อมข้อมูลหน้างานเพื่อใช้ประกอบการรับรอง",title_en:"Connect site data for certification evidence",desc_th:"รองรับข้อมูลพลังงาน น้ำ อากาศ ของเสีย และ GHG Activity Data จาก Sensor, PLC, MQTT และ Excel",desc_en:"Supports energy, water, air, waste, and GHG activity data from sensors, PLCs, MQTT, and Excel."}
+              ].map(item => (
+                <div key={item.title_en} style={{background:"#fff",border:"1px solid var(--border)",borderRadius:"var(--r-lg)",padding:24,boxShadow:"0 12px 28px rgba(16,40,30,.06)"}}>
+                  <span className="badge">{item.tag}</span>
+                  <h3 style={{fontSize:19,color:"var(--g1)",margin:"14px 0 10px"}}>{lang==="th"?item.title_th:item.title_en}</h3>
+                  <p style={{fontSize:14,color:"var(--muted)",lineHeight:1.75}}>{lang==="th"?item.desc_th:item.desc_en}</p>
+                </div>
+              ))}
+            </div>
+            <div style={{textAlign:"center",marginTop:34}}>
+              <button className="btn btn-dark" onClick={() => setTab("process")}>{lang==="th"?"ดูขั้นตอนและตารางประชุม":"View Process & Schedule"}</button>
             </div>
           </div>
         </section>
@@ -3009,7 +6185,7 @@ function EcoFactoryPage({ lang, nav }) {
 }
 
 // ─── Factory Check Page ────────────────────────────────────────
-function AmataAwardsPage({ lang, nav }) {
+function AmataAwardsPage({ lang }) {
   const L = (th,en) => lang==="th"?th:en;
   const deckSlides = Array.from({ length: 15 }, (_, i) => `/amata-green-blueprint-2026/slide-${String(i + 1).padStart(2, "0")}.png`);
   const awards = [
@@ -3051,7 +6227,7 @@ function AmataAwardsPage({ lang, nav }) {
               <p style={{color:"rgba(255,255,255,.72)",fontSize:14,lineHeight:1.8,marginBottom:22}}>
                 {L("ขั้นต่อไปสามารถเพิ่มแบบประเมินเฉพาะโครงการ Amata Awards พร้อม scoring, checklist และ upload หลักฐาน", "Next, we can add a dedicated scoring checklist with evidence upload for the Amata Awards workflow.")}
               </p>
-              <button className="btn-accent" style={{padding:"11px 22px",fontSize:14}} onClick={() => nav("experts")}>{L("ปรึกษาผู้เชี่ยวชาญ", "Consult Experts")}</button>
+              <button className="btn-accent" style={{padding:"11px 22px",fontSize:14}} onClick={() => { window.location.href = "https://app.verdixgreen.com/#waste-award"; }}>{L("สมัครเข้าร่วมโครงการ", "Join Program")}</button>
             </div>
           </div>
         </div>
@@ -3320,7 +6496,6 @@ function Footer({ t, lang, nav, footer }) {
           <div className="footer-grid">
             <div>
               <BrandLogo className="footer-brand" />
-              <BUUPHLogo />
               <p className="footer-desc">{L(footer.description_th, footer.description_en)}</p>
               <div className="footer-social">
                 {(footer.socials || []).map((s, i) => (
@@ -3344,13 +6519,22 @@ function Footer({ t, lang, nav, footer }) {
               <div className="footer-hdg">{t.contact_us}</div>
               <div className="footer-contact">
                 <div className="footer-contact-row"><span className="footer-contact-ico">✉</span><span>{footer.email}</span></div>
+                <div className="footer-contact-row"><span className="footer-contact-ico">✉</span><span>{footer.email2}</span></div>
                 <div className="footer-contact-row"><span className="footer-contact-ico">☎</span><span>{footer.phone}</span></div>
                 <div className="footer-contact-row"><span className="footer-contact-ico">⌖</span><span>{footer.location}</span></div>
+                <div className="footer-contact-row"><span className="footer-contact-ico">⌖</span><span>{footer.location2}</span></div>
               </div>
             </div>
+            <div className="footer-lineoa">
+              <div className="footer-hdg">Line OA</div>
+              <img className="footer-lineqr" src="/lineoa-verdixgreen.png" alt="Line OA @verdixgreen QR code" loading="lazy" />
+              <div className="footer-lineid">@verdixgreen</div>
+              <div className="footer-linesub">{lang==="th"?"สแกนเพื่อเพิ่มเพื่อน":"Scan to add friend"}</div>
+            </div>
           </div>
+          <FooterPartners lang={lang} partners={footer.partners} />
           <div className="footer-bot">
-            <span>{footer.copyright}</span>
+            <span>@ 2025 copy right www.verdixgreen.com</span>
             <div className="footer-legal">
               {(footer.legalLinks || []).map((l, i) => <button key={i} onClick={() => go(l.page)}>{L(l.label_th, l.label_en)}</button>)}
             </div>
@@ -3368,29 +6552,43 @@ export default function App() {
   const [sec,setSec] = useState("dashboard");
   const [user,setUser] = useState(null);
   const [articles,setArticles] = useState(INIT_ARTICLES);
+  const [documents,setDocuments] = useState(INIT_DOCUMENTS);
   const [experts,setExperts] = useState(INIT_EXPERTS);
   const [slides,setSlides] = useState(() => slideApi.list());
   const [footer,setFooter] = useState(() => footerApi.list());
   const [menus,setMenus] = useState(INIT_MENUS);
   const [cmsReady,setCmsReady] = useState(false);
   const [selArt,setSelArt] = useState(null);
+  const [ecoFactoryTab,setEcoFactoryTab] = useState("home");
   const [authBusy,setAuthBusy] = useState(false);
   const [authMessage,setAuthMessage] = useState(null);
+  const [carbonTab,setCarbonTab] = useState("overview");
+  const [cfoSubmissions,setCfoSubmissions] = useState([]);
+  const [tgiSurveyResponses,setTgiSurveyResponses] = useState([]);
+  const [userRoles,setUserRoles] = useState([]);
 
-  const mapAuthUser = (authUser) => authUser
-    ? {
-        name: authUser.user_metadata?.full_name || authUser.email,
-        email: authUser.email,
-        role: getUserRole(authUser)
-      }
-    : null;
+  const mapAuthUser = async (authUser) => {
+    if (!authUser) return null;
+
+    const assignedRole = await userRoleService.getRoleForEmail(authUser.email);
+    const role = assignedRole?.status === "disabled"
+      ? "standard_user"
+      : assignedRole?.role || getUserRole(authUser);
+
+    return {
+      name: assignedRole?.full_name || authUser.user_metadata?.full_name || authUser.email,
+      email: authUser.email,
+      role,
+    };
+  };
 
   useEffect(() => {
     let active = true;
 
     async function loadCms() {
-      const [loadedArticles, loadedExperts, loadedSlides, loadedFooter, loadedMenus] = await Promise.all([
+      const [loadedArticles, loadedDocuments, loadedExperts, loadedSlides, loadedFooter, loadedMenus] = await Promise.all([
         cmsService.list("articles", INIT_ARTICLES),
+        cmsService.list("documents", INIT_DOCUMENTS),
         cmsService.list("experts", INIT_EXPERTS),
         cmsService.list("slides", INIT_SLIDES),
         cmsService.getFooter(INIT_FOOTER),
@@ -3398,8 +6596,9 @@ export default function App() {
       ]);
 
       if (!active) return;
-      setArticles(loadedArticles);
-      setExperts(loadedExperts);
+      setArticles(normalizeArticles(loadedArticles));
+      setDocuments(normalizeDocuments(loadedDocuments));
+      setExperts(anonymizeExperts(loadedExperts));
       setSlides(loadedSlides);
       setFooter(loadedFooter);
       setMenus(normalizeMenus(loadedMenus));
@@ -3417,12 +6616,19 @@ export default function App() {
 
     async function loadSession() {
       const { data } = await supabase.auth.getSession();
-      if (active) setUser(mapAuthUser(data.session?.user));
+      const mapped = await mapAuthUser(data.session?.user);
+      if (active) setUser(mapped);
     }
 
     loadSession();
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(mapAuthUser(session?.user));
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      mapAuthUser(session?.user).then((mapped) => {
+        if (active) setUser(mapped);
+      });
+      if (event === "PASSWORD_RECOVERY") {
+        setAuthMessage(null);
+        setPage("reset-password");
+      }
     });
 
     return () => {
@@ -3432,8 +6638,56 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    async function loadCfoSubmissions() {
+      if (!user?.email) {
+        setCfoSubmissions([]);
+        return;
+      }
+      const rows = isAdminRole(user.role)
+        ? await cfoAssessmentService.listAll()
+        : await cfoAssessmentService.listForUser(user.email);
+      if (active) setCfoSubmissions(rows);
+    }
+    loadCfoSubmissions();
+    return () => { active = false; };
+  }, [user?.email, user?.role]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadTgiSurveyResponses() {
+      if (!canViewTgiReports(user?.role)) {
+        setTgiSurveyResponses([]);
+        return;
+      }
+      const rows = await tgiSurveyService.listAll();
+      if (active) setTgiSurveyResponses(rows);
+    }
+    loadTgiSurveyResponses();
+    return () => { active = false; };
+  }, [user?.role]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadUserRoles() {
+      if (!isAdminRole(user?.role)) {
+        setUserRoles([]);
+        return;
+      }
+      const rows = await userRoleService.listAll();
+      if (active) setUserRoles(rows);
+    }
+    loadUserRoles();
+    return () => { active = false; };
+  }, [user?.role]);
+
+  useEffect(() => {
     if (cmsReady) cmsService.replaceAll("articles", articles);
   }, [articles, cmsReady]);
+
+  useEffect(() => {
+    if (cmsReady) cmsService.replaceAll("documents", documents);
+  }, [documents, cmsReady]);
 
   useEffect(() => {
     if (cmsReady) cmsService.replaceAll("experts", experts);
@@ -3454,43 +6708,174 @@ export default function App() {
   const nav = (p,data=null) => {
     setPage(p);
     if (p==="blog-detail") setSelArt(data);
+    if (p==="eco-factory") setEcoFactoryTab(data?.ecoTab || "home");
+    if (p==="carbon") setCarbonTab(data?.carbonTab || "overview");
+    requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+  };
+
+  const saveCfoAssessment = async (payload) => {
+    const saved = await cfoAssessmentService.saveAssessment(payload);
+    setCfoSubmissions(prev => {
+      const next = prev.some(item => String(item.id) === String(saved.id))
+        ? prev.map(item => String(item.id) === String(saved.id) ? saved : item)
+        : [saved, ...prev];
+      return next;
+    });
+    return saved;
+  };
+
+  const reviewCfoAssessment = async (id, status, note) => {
+    const reviewed = await cfoAssessmentService.reviewAssessment(id, {
+      status,
+      review_note: note,
+      reviewer_email: user?.email || "",
+    });
+    if (reviewed) {
+      setCfoSubmissions(prev => prev.map(item => String(item.id) === String(id) ? reviewed : item));
+    }
+  };
+
+  const saveTgiSurveyResponse = async (payload) => {
+    const saved = await tgiSurveyService.saveResponse(payload);
+    setTgiSurveyResponses(prev => {
+      const next = prev.some(item => String(item.id) === String(saved.id))
+        ? prev.map(item => String(item.id) === String(saved.id) ? saved : item)
+        : [saved, ...prev];
+      return next;
+    });
+    return saved;
+  };
+
+  const importTgiSurveyResponses = async (rows) => {
+    const saved = await tgiSurveyService.importResponses(rows);
+    setTgiSurveyResponses(prev => {
+      const map = new Map(prev.map(item => [String(item.id), item]));
+      saved.forEach(item => map.set(String(item.id), item));
+      return Array.from(map.values()).sort((a,b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    });
+    return saved;
+  };
+
+  const deleteTgiSurveyResponse = async (id) => {
+    await tgiSurveyService.deleteResponse(id);
+    setTgiSurveyResponses(prev => prev.filter(item => String(item.id) !== String(id)));
+  };
+
+  const saveUserRole = async (payload) => {
+    const saved = await userRoleService.saveUserRole(payload);
+    setUserRoles(prev => {
+      const next = prev.some(item => String(item.id) === String(saved.id) || String(item.email).toLowerCase() === saved.email)
+        ? prev.map(item => (String(item.id) === String(saved.id) || String(item.email).toLowerCase() === saved.email) ? saved : item)
+        : [saved, ...prev];
+      return next.sort((a,b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    });
+    if (saved.email === user?.email) setUser(prev => prev ? {...prev, name: saved.full_name || prev.name, role: saved.status === "disabled" ? "standard_user" : saved.role} : prev);
+    return saved;
+  };
+
+  const deleteUserRole = async (row) => {
+    if (!window.confirm(t.confirm_del)) return;
+    await userRoleService.deleteUserRole(row);
+    setUserRoles(prev => prev.filter(item => String(item.id) !== String(row.id) && String(item.email || "").toLowerCase() !== String(row.email || "").toLowerCase()));
+  };
+
+  const sendPasswordSetupLink = async (email) => {
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    if (!cleanEmail) {
+      window.alert("Email is required");
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      window.alert("Supabase is not configured.");
+      return;
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: window.location.origin,
+    });
+
+    if (error) {
+      window.alert(friendlyAuthError(error));
+      return;
+    }
+
+    window.alert(lang === "th"
+      ? `ส่งลิงก์ตั้งรหัสผ่านไปที่ ${cleanEmail} แล้ว หากไม่พบให้ตรวจ Spam/Junk`
+      : `Password setup link sent to ${cleanEmail}. Please check Inbox or Spam/Junk.`);
+  };
+
+  const friendlyAuthError = (error) => {
+    const message = String(error?.message || error || "");
+    const lower = message.toLowerCase();
+    if (lower.includes("email rate limit")) {
+      return "ระบบส่งอีเมลยืนยันบัญชีเกินโควตาชั่วคราว กรุณารอประมาณ 30-60 นาทีแล้วลองใหม่ หรือแจ้งแอดมินให้สร้างบัญชีให้ก่อน";
+    }
+    if (lower.includes("user already registered") || lower.includes("already registered")) {
+      return "อีเมลนี้สมัครไว้แล้ว กรุณาไปหน้าเข้าสู่ระบบ หรือกดลืมรหัสผ่านเพื่อตั้งรหัสใหม่";
+    }
+    if (lower.includes("password")) {
+      return "รหัสผ่านไม่ถูกต้องตามเงื่อนไข กรุณาตั้งอย่างน้อย 6 ตัวอักษร";
+    }
+    return message || "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง";
   };
 
   const doLogin = async (email,pass) => {
     setAuthMessage(null);
+    const cleanEmail = email.trim().toLowerCase();
 
     if (!isSupabaseConfigured) {
       setAuthMessage({ type: "error", text: "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY first." });
+      return;
+    }
+
+    if (!cleanEmail || !pass) {
+      setAuthMessage({ type: "error", text: "กรุณากรอกอีเมลและรหัสผ่าน" });
       return;
     }
 
     setAuthBusy(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    const { data, error } = await supabase.auth.signInWithPassword({ email: cleanEmail, password: pass });
     setAuthBusy(false);
 
     if (error) {
-      setAuthMessage({ type: "error", text: error.message });
+      const notConfirmed = error.message.toLowerCase().includes("email not confirmed");
+      setAuthMessage({
+        type: "error",
+        text: notConfirmed
+          ? "อีเมลนี้สมัครแล้ว แต่ยังไม่ได้ยืนยันอีเมล กรุณากดลิงก์ยืนยันในกล่องจดหมายก่อนเข้าสู่ระบบ"
+          : friendlyAuthError(error),
+        canResend: notConfirmed,
+      });
       return;
     }
 
     const authUser = data.user;
-    setUser(mapAuthUser(authUser));
-    setPage(isAdminUser(authUser) ? "admin" : "home");
+    const mapped = await mapAuthUser(authUser);
+    setUser(mapped);
+    setSec(mapped?.role === "tgi_report_viewer" ? "tgi-survey" : "dashboard");
+    setPage(canAccessAdminPanel(mapped?.role) || isAdminUser(authUser) ? "admin" : "member");
   };
 
   const doRegister = async ({ name, email, org, pass }) => {
     setAuthMessage(null);
+    const cleanEmail = email.trim().toLowerCase();
 
     if (!isSupabaseConfigured) {
       setAuthMessage({ type: "error", text: "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY first." });
+      return;
+    }
+
+    if (!cleanEmail || !pass) {
+      setAuthMessage({ type: "error", text: "กรุณากรอกอีเมลและรหัสผ่าน" });
       return;
     }
 
     setAuthBusy(true);
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: cleanEmail,
       password: pass,
       options: {
+        emailRedirectTo: window.location.origin,
         data: {
           full_name: name,
           organization: org
@@ -3500,17 +6885,107 @@ export default function App() {
     setAuthBusy(false);
 
     if (error) {
-      setAuthMessage({ type: "error", text: error.message });
+      setAuthMessage({ type: "error", text: friendlyAuthError(error) });
       return;
     }
 
     if (data.session?.user) {
-      setUser(mapAuthUser(data.session.user));
-      setPage("home");
+      const mapped = await mapAuthUser(data.session.user);
+      setUser(mapped);
+      setPage("member");
       return;
     }
 
-    setAuthMessage({ type: "success", text: "Account created. Please check your email to confirm your account before logging in." });
+    setAuthMessage({ type: "success", text: "สมัครสมาชิกสำเร็จ กรุณาตรวจอีเมลเพื่อกดยืนยันบัญชีก่อนเข้าสู่ระบบ หากไม่พบให้ตรวจใน Spam/Junk" });
+  };
+
+  const doResendConfirmation = async (email) => {
+    setAuthMessage(null);
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!isSupabaseConfigured) {
+      setAuthMessage({ type: "error", text: "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY first." });
+      return;
+    }
+
+    if (!cleanEmail) {
+      setAuthMessage({ type: "error", text: "กรุณากรอกอีเมลก่อนส่งอีเมลยืนยันอีกครั้ง" });
+      return;
+    }
+
+    setAuthBusy(true);
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: cleanEmail,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    setAuthBusy(false);
+
+    if (error) {
+      setAuthMessage({ type: "error", text: friendlyAuthError(error), canResend: !String(error.message || "").toLowerCase().includes("email rate limit") });
+      return;
+    }
+
+    setAuthMessage({ type: "success", text: "ส่งอีเมลยืนยันอีกครั้งแล้ว กรุณาตรวจ Inbox หรือ Spam/Junk" });
+  };
+
+  const doPasswordReset = async (email) => {
+    setAuthMessage(null);
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!isSupabaseConfigured) {
+      setAuthMessage({ type: "error", text: "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY first." });
+      return;
+    }
+
+    if (!cleanEmail) {
+      setAuthMessage({ type: "error", text: "กรุณากรอกอีเมลก่อนส่งลิงก์ตั้งรหัสผ่านใหม่" });
+      return;
+    }
+
+    setAuthBusy(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: window.location.origin,
+    });
+    setAuthBusy(false);
+
+    if (error) {
+      setAuthMessage({ type: "error", text: friendlyAuthError(error) });
+      return;
+    }
+
+    setAuthMessage({ type: "success", text: "ส่งลิงก์ตั้งรหัสผ่านใหม่แล้ว กรุณาตรวจ Inbox หรือ Spam/Junk" });
+  };
+
+  const doUpdatePassword = async (pass, confirm) => {
+    setAuthMessage(null);
+
+    if (!pass || !confirm) {
+      setAuthMessage({ type: "error", text: "กรุณากรอกรหัสผ่านใหม่ให้ครบ" });
+      return;
+    }
+    if (pass.length < 8) {
+      setAuthMessage({ type: "error", text: "รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร" });
+      return;
+    }
+    if (pass !== confirm) {
+      setAuthMessage({ type: "error", text: "รหัสผ่านใหม่ไม่ตรงกัน" });
+      return;
+    }
+
+    setAuthBusy(true);
+    const { error } = await supabase.auth.updateUser({ password: pass });
+    setAuthBusy(false);
+
+    if (error) {
+      setAuthMessage({ type: "error", text: error.message });
+      return;
+    }
+
+    setAuthMessage({ type: "success", text: "ตั้งรหัสผ่านใหม่เรียบร้อยแล้ว กรุณาเข้าสู่ระบบอีกครั้ง" });
+    await supabase.auth.signOut();
+    setUser(null);
+    setTimeout(() => setPage("login"), 800);
   };
 
   const logout = async () => {
@@ -3526,20 +7001,27 @@ export default function App() {
       <AnnounceBanner lang={lang} />
       <Navbar t={t} lang={lang} setLang={setLang} page={page} nav={nav} user={user} logout={logout} menus={menus} />
       {page==="home" && <HomePage t={t} lang={lang} nav={nav} articles={articles} slides={slides} />}
+      {page==="about" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:lang==="th"?"เกี่ยวกับเรา":"About Us"}]} nav={nav}/><AboutPage lang={lang} nav={nav} /></>}
       {page==="env" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_env}]} nav={nav}/><EnvironmentPage lang={lang} nav={nav} /></>}
-      {page==="carbon" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_carbon}]} nav={nav}/><CarbonPage lang={lang} nav={nav} /></>}
-      {page==="eco-factory" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_eco}]} nav={nav}/><EcoFactoryPage lang={lang} nav={nav} /></>}
+      {page==="carbon" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_carbon}]} nav={nav}/><CarbonPage lang={lang} nav={nav} initialTab={carbonTab} /></>}
+      {page==="eco-factory" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_eco}]} nav={nav}/><EcoFactoryPage lang={lang} nav={nav} initialTab={ecoFactoryTab} /></>}
+      {page==="downloads" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:lang==="th"?"ดาวน์โหลดเอกสาร":"Downloads"}]} nav={nav}/><DownloadsPage lang={lang} documents={documents} /></>}
+      {page==="tgi-survey" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:lang==="th"?"ศูนย์แบบประเมิน":"Assessment Center",page:"factory-check"},{label:lang==="th"?"แบบสอบถามความพึงพอใจ(TGI)":"Satisfaction Survey (TGI)"}]} nav={nav}/><TgiSurveyPage lang={lang} /></>}
       {page==="amata-awards" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_eco,page:"eco-factory"},{label:t.menu_awards}]} nav={nav}/><AmataAwardsPage lang={lang} nav={nav} /></>}
       {page==="factory-check" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_eco,page:"eco-factory"},{label:t.menu_fcheck}]} nav={nav}/><FactoryCheckPage lang={lang} nav={nav} /></>}
       {page==="blog" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_knowledge}]} nav={nav}/><BlogPage t={t} lang={lang} nav={nav} articles={articles} /></>}
       {page==="blog-detail" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.menu_knowledge,page:"blog"},{label:lang==="th"?selArt?.title_th?.slice(0,40)+"…":selArt?.title_en?.slice(0,40)+"…"}]} nav={nav}/><BlogDetail lang={lang} article={selArt} nav={nav} /></>}
       {page==="experts" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.experts}]} nav={nav}/><ExpertsPage t={t} lang={lang} experts={experts} /></>}
-      {page==="login" && <LoginPage t={t} nav={nav} doLogin={doLogin} authBusy={authBusy} authMessage={authMessage} />}
+      {page==="login" && <LoginPage t={t} nav={nav} doLogin={doLogin} doResendConfirmation={doResendConfirmation} doPasswordReset={doPasswordReset} authBusy={authBusy} authMessage={authMessage} />}
+      {page==="reset-password" && <ResetPasswordPage nav={nav} doUpdatePassword={doUpdatePassword} authBusy={authBusy} authMessage={authMessage} />}
       {page==="register" && <RegisterPage t={t} nav={nav} doRegister={doRegister} authBusy={authBusy} authMessage={authMessage} />}
-      {page==="admin" && user?.role==="admin" && (
-        <AdminPanel t={t} lang={lang} articles={articles} setArticles={setArticles} experts={experts} setExperts={setExperts} slides={slides} setSlides={setSlides} footer={footer} setFooter={setFooter} menus={menus} setMenus={setMenus} sec={sec} setSec={setSec} />
+      {page==="member" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.dashboard}]} nav={nav}/><MemberDashboard user={user} cfoSubmissions={cfoSubmissions} nav={nav} /></>}
+      {page==="cfo-assessment" && <><Breadcrumb items={[{label:t.home,page:"home"},{label:t.dashboard,page:"member"},{label:"CFO Assessment"}]} nav={nav}/><CfoAssessmentPage user={user} nav={nav} onSave={saveCfoAssessment} /></>}
+      {page==="admin" && canAccessAdminPanel(user?.role) && (
+        <AdminPanel t={t} lang={lang} currentUser={user} articles={articles} setArticles={setArticles} documents={documents} setDocuments={setDocuments} experts={experts} setExperts={setExperts} slides={slides} setSlides={setSlides} footer={footer} setFooter={setFooter} menus={menus} setMenus={setMenus} cfoSubmissions={cfoSubmissions} onReviewCfo={reviewCfoAssessment} tgiSurveyResponses={tgiSurveyResponses} onSaveTgiSurvey={saveTgiSurveyResponse} onImportTgiSurvey={importTgiSurveyResponses} onDeleteTgiSurvey={deleteTgiSurveyResponse} userRoles={userRoles} onSaveUserRole={saveUserRole} onDeleteUserRole={deleteUserRole} onSendPasswordSetup={sendPasswordSetupLink} sec={sec} setSec={setSec} />
       )}
       <BackToTop />
+      {page!=="admin" && <AiChatWidget lang={lang} />}
       {page!=="admin" && <Footer t={t} lang={lang} nav={nav} footer={footer} />}
     </div>
   );

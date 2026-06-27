@@ -10,9 +10,15 @@ export const supabase = isSupabaseConfigured
   : null;
 
 export function getUserRole(user) {
-  return user?.app_metadata?.role || user?.user_metadata?.role || "user";
+  const email = user?.email?.toLowerCase();
+  if (email === "admin@verdixgreen.com" || email === "khomsans@gmail.com") return "super_admin";
+  return user?.app_metadata?.role || user?.user_metadata?.role || "standard_user";
+}
+
+export function isAdminRole(role) {
+  return role === "super_admin" || role === "admin";
 }
 
 export function isAdminUser(user) {
-  return getUserRole(user) === "admin";
+  return isAdminRole(getUserRole(user));
 }

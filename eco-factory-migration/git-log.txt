@@ -1,0 +1,20 @@
+b5ff76c security: move secrets out of repo into GitLab CI/CD Variables
+5e6f631 ci: reset working tree before pull in production deploy
+e3d28db security: harden API against common attack vectors
+7fcddec style: retheme UI to match Verdixgreen design system
+e73da49 fix: allow factory role to submit ABWM assessment (was blocked by auditor-only guard)
+0fb364e feat: implement full ABWM workflow (assignment, feedback, lead-auditor approval)
+7ed79e1 feat: replace prompt() with custom modal for Waste Award new entry
+86cbb6a style: modernize EF-WP Self Audit UI to match Eco Factory design system
+5f2edc0 feat: add EF-WP Self Audit module (Waste Processor 101/105/106)
+8b0a63b feat: redesign Eco Factory document submission flow (Groups A/B/C/D)
+3ef97a9 feat: add auditor dashboard + dashboard nav link
+0a44083 feat: add user profile edit page
+bb44fd3 feat: extend user registration with role-specific profile fields
+11eec26 fix: Excel row 6 — merge C:D for level label, E:G for total score
+128e48f feat: show module-specific subtitle in header based on current route
+cd4e6cf feat: update web title and subtitle across all app shells
+0acd961 feat: redesign waste award Excel header to match assessment form layout
+9f06ae9 fix: allow auditor to start review from draft + show Excel from under_review
+4964810 feat: add phone field to waste award factory info (TDD)
+b8b292d test: fix waste_award_test.go after FactoryNotes removal + add new model tests
